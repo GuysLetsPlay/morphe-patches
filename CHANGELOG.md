@@ -1,3 +1,9 @@
+## [1.40.0-dev.3](https://github.com/GuysLetsPlay/morphe-patches/compare/v1.40.0-dev.2...v1.40.0-dev.3) (2026-08-13)
+
+### 🐛 Bug Fixes
+
+* **youtube:** preserve live channel avatars ([ecc8642](https://github.com/GuysLetsPlay/morphe-patches/commit/ecc864215a832ffaaf9a6f4c7f6d50ced063cef7))
+
 ## [1.40.0-dev.2](https://github.com/GuysLetsPlay/morphe-patches/compare/v1.40.0-dev.1...v1.40.0-dev.2) (2026-08-13)
 
 ### 🐛 Bug Fixes
