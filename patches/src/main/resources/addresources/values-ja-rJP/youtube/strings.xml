@@ -275,7 +275,7 @@ Second \"item\" text"</string>
 
 制限事項:
 • ショート動画はチャンネル名の合致では除外できない
-• 一部の UI コンポーネントが残ってしまう場合がある
+• 一部の UI コンポーネントが残る場合がある
 • キーワードで検索したとき、結果が表示されない場合がある"</string>
   <string name="morphe_hide_keyword_content_about_whole_words_title">単語全体で合致</string>
   <!-- Translations must use a localized example. For languages that do not use spaces between words (Chinese, Japanese, etc.) the English AI example should be used since no localized examples exist. Or if using machine translations, or if nobody wants to think of a localized example, then the English 'ai' example should be left as-is. -->
