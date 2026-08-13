@@ -3,6 +3,17 @@
 ### 🐛 Bug Fixes
 
 * **ci:** skip upstream-only release steps in forks ([f8f2770](https://github.com/GuysLetsPlay/morphe-patches/commit/f8f2770d5d05792de11f41a19f192b030ec1d622))
+* **youtube:** match live indicator components ([a4eeeed](https://github.com/GuysLetsPlay/morphe-patches/commit/a4eeeede6eebd742ec17dd48829eb30c58085356))
+
+### ✨ New Features
+
+* **youtube:** expose hide livestreams as a patch ([1d27a67](https://github.com/GuysLetsPlay/morphe-patches/commit/1d27a676b2ade043ca61589e01eed8647db51195))
+
+## [1.40.0-dev.2](https://github.com/GuysLetsPlay/morphe-patches/compare/v1.40.0-dev.1...v1.40.0-dev.2) (2026-08-13)
+
+### 🐛 Bug Fixes
+
+* **ci:** skip upstream-only release steps in forks ([f8f2770](https://github.com/GuysLetsPlay/morphe-patches/commit/f8f2770d5d05792de11f41a19f192b030ec1d622))
 
 ### ✨ New Features
 
