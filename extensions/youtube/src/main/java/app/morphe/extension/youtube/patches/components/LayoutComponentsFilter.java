@@ -82,6 +82,8 @@ public final class LayoutComponentsFilter extends Filter {
     private final StringFilterGroup videoLabels;
     private final ByteArrayFilterGroupList videoLabelsGroupList = new ByteArrayFilterGroupList();
     private final StringFilterGroup videoRecommendationLabels;
+    private final StringFilterGroup livestreamCards;
+    private final ByteArrayFilterGroup livestreamBuffer;
 
     public enum ExpandableCardStyle {
         SHOW_ALL,
@@ -115,6 +117,16 @@ public final class LayoutComponentsFilter extends Filter {
                 "live_chat_ep_entrypoint.e"
         );
 
+        // These components only render a visual live-state indicator, so filtering them does
+        // not affect regular channel avatars or video cards.
+        final var livestreamIndicators = new StringFilterGroup(
+                Settings.HIDE_LIVESTREAMS,
+                "live_avatar",
+                "live_badge",
+                "live_ring",
+                "live_streaming_badge"
+        );
+
         // The 'Invite others to message' card of the Messages section shown at the top of
         // the Notifications tab, wrapped in a linear layout and identified by a unique,
         // language independent buffer string.
@@ -144,6 +156,7 @@ public final class LayoutComponentsFilter extends Filter {
                 cellDivider,
                 exploreTopicsShelf,
                 liveChatReplay,
+                livestreamIndicators,
                 inviteToMessageCard,
                 seekEduOverlay
         );
@@ -366,6 +379,19 @@ public final class LayoutComponentsFilter extends Filter {
                 "video_lockup_thumbnail.e"
         );
 
+        // Video card layouts are shared by normal videos and streams. The live-state fields
+        // in the protobuf buffer distinguish the latter without relying on localized text.
+        livestreamCards = new StringFilterGroup(
+                Settings.HIDE_LIVESTREAMS,
+                "video_lockup",
+                "video_with_context"
+        );
+        livestreamBuffer = new ByteArrayFilterGroup(
+                null,
+                "is_live",
+                "live_streaming"
+        );
+
         videoLabels = new StringFilterGroup(
                 null,
                 "|badge.e"
@@ -433,6 +459,7 @@ public final class LayoutComponentsFilter extends Filter {
                 videoLabels,
                 videoTitle,
                 videoRecommendationLabels,
+                livestreamCards,
                 webLinkPanel
         );
     }
@@ -543,6 +570,10 @@ public final class LayoutComponentsFilter extends Filter {
 
         if (matchedGroup == videoRecommendationLabels) {
             return NavigationBar.isSearchBarActive();
+        }
+
+        if (matchedGroup == livestreamCards) {
+            return livestreamBuffer.check(buffer).isFiltered();
         }
 
         return true;
