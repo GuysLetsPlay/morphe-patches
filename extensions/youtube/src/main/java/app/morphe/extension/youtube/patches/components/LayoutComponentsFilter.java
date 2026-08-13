@@ -117,14 +117,12 @@ public final class LayoutComponentsFilter extends Filter {
                 "live_chat_ep_entrypoint.e"
         );
 
-        // These components only render a visual live-state indicator, so filtering them does
-        // not affect regular channel avatars or video cards.
+        // Live-state components have version-dependent names, but consistently include
+        // "live". The group is registered for identifier callbacks, so ordinary avatars
+        // and video cards are not matched.
         final var livestreamIndicators = new StringFilterGroup(
                 Settings.HIDE_LIVESTREAMS,
-                "live_avatar",
-                "live_badge",
-                "live_ring",
-                "live_streaming_badge"
+                "live"
         );
 
         // The 'Invite others to message' card of the Messages section shown at the top of
@@ -384,12 +382,20 @@ public final class LayoutComponentsFilter extends Filter {
         livestreamCards = new StringFilterGroup(
                 Settings.HIDE_LIVESTREAMS,
                 "video_lockup",
-                "video_with_context"
+                "video_with_context",
+                "live"
         );
         livestreamBuffer = new ByteArrayFilterGroup(
                 null,
                 "is_live",
-                "live_streaming"
+                "is_livestream",
+                "is_live_stream",
+                "live_streaming",
+                "live_badge",
+                "live_stream",
+                "LIVE_BADGE",
+                "LIVE_WAVES",
+                "LiveIndicatorEntityModel"
         );
 
         videoLabels = new StringFilterGroup(
@@ -573,7 +579,10 @@ public final class LayoutComponentsFilter extends Filter {
         }
 
         if (matchedGroup == livestreamCards) {
-            return livestreamBuffer.check(buffer).isFiltered();
+            // YouTube names the current-live indicator components with "live". Card roots
+            // are not named consistently across feed, channel and recommendation surfaces,
+            // so use the serialized live markers for generic card paths as a fallback.
+            return path.contains("live") || livestreamBuffer.check(buffer).isFiltered();
         }
 
         return true;
