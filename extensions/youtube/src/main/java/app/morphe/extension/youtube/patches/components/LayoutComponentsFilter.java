@@ -117,12 +117,15 @@ public final class LayoutComponentsFilter extends Filter {
                 "live_chat_ep_entrypoint.e"
         );
 
-        // Live-state components have version-dependent names, but consistently include
-        // "live". The group is registered for identifier callbacks, so ordinary avatars
-        // and video cards are not matched.
+        // Filter only the indicator layer. Filtering the broader live-avatar node removes
+        // the channel picture along with the red ring.
         final var livestreamIndicators = new StringFilterGroup(
                 Settings.HIDE_LIVESTREAMS,
-                "live"
+                "live_badge",
+                "live_ring",
+                "live_waves",
+                "avatar_ring",
+                "live_streaming_badge"
         );
 
         // The 'Invite others to message' card of the Messages section shown at the top of
@@ -579,6 +582,12 @@ public final class LayoutComponentsFilter extends Filter {
         }
 
         if (matchedGroup == livestreamCards) {
+            if (path.contains("video_lockup")) {
+                Logger.printDebug(() -> "Hide livestreams candidate: path=" + path
+                        + " identifier=" + identifier
+                        + " buffer=" + asciiStrings.getStrings());
+            }
+
             // YouTube names the current-live indicator components with "live". Card roots
             // are not named consistently across feed, channel and recommendation surfaces,
             // so use the serialized live markers for generic card paths as a fallback.
