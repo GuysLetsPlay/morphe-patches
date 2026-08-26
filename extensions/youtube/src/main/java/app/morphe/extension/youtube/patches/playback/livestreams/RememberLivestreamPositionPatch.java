@@ -69,6 +69,13 @@ public final class RememberLivestreamPositionPatch {
     private static final String STORAGE_KEY_PREFIX = "morphe_livestream_playback_position_";
 
     /**
+     * Changed during patching.
+     */
+    private static boolean isPatchIncluded() {
+        return false; // Modified during patching.
+    }
+
+    /**
      * Duration of the current video when first observed. Zero if not yet observed.
      */
     private static volatile long baselineVideoLength;
