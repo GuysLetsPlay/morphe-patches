@@ -110,6 +110,7 @@ public final class RememberLivestreamPositionPatch {
      * Injection point.
      */
     public static void newVideoStarted(VideoInformation.PlaybackController ignoredPlayerController) {
+        Logger.printInfo(() -> "RememberLivestream newVideoStarted id=" + VideoInformation.getVideoId() + " gen=" + newVideoGeneration);
         baselineVideoLength = 0;
         livestreamConfirmed = false;
         lastSaveTime = 0;
@@ -153,7 +154,7 @@ public final class RememberLivestreamPositionPatch {
                     return;
                 }
                 livestreamConfirmed = true;
-                Logger.printDebug(() -> "Detected ongoing livestream");
+                Logger.printInfo(() -> "RememberLivestream Detected ongoing livestream len=" + videoLength + " base=" + baselineVideoLength);
             }
 
             final long now = System.currentTimeMillis();
@@ -202,11 +203,12 @@ public final class RememberLivestreamPositionPatch {
 
             // The stream is still ongoing and advanced since it was last watched.
             final boolean watchedAtLiveEdge = saved.videoLength - saved.position < LIVE_EDGE_THRESHOLD_MS;
+            Logger.printInfo(() -> "RememberLivestream checkRestore id=" + videoId + " savedPos=" + saved.position + " savedLen=" + saved.videoLength + " curLen=" + videoLength + " liveEdge=" + watchedAtLiveEdge);
             if (!watchedAtLiveEdge || Settings.REMEMBER_LIVESTREAM_POSITION_RESUME_WHEN_LIVE.get()) {
-                Logger.printDebug(() -> "Restoring livestream playback position: " + saved.position);
+                Logger.printInfo(() -> "RememberLivestream Restoring livestream playback position: " + saved.position);
                 VideoInformation.seekTo(saved.position);
             } else {
-                Logger.printDebug(() -> "Livestream was watched live, jumping to the live edge");
+                Logger.printInfo(() -> "RememberLivestream was watched live, jumping to the live edge");
             }
 
             // Position has been consumed. A fresh position will be saved while watching.
@@ -236,6 +238,7 @@ public final class RememberLivestreamPositionPatch {
                 .putString(STORAGE_KEY_PREFIX + videoId,
                         positionMs + "|" + videoLengthMs + "|" + System.currentTimeMillis())
                 .apply();
+        Logger.printInfo(() -> "RememberLivestream saved pos=" + positionMs + " len=" + videoLengthMs + " id=" + videoId);
 
         trimSavedPositions(preferences);
     }
