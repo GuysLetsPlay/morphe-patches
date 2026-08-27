@@ -1,10 +1,3 @@
-/*
- * Copyright 2026 Morphe.
- * https://github.com/MorpheApp/morphe-patches
- *
- * See the included NOTICE file for GPLv3 Section 7 terms that apply to Morphe contributions.
- */
-
 package app.morphe.extension.youtube.patches.playback.livestreams;
 
 import android.content.SharedPreferences;
@@ -21,9 +14,10 @@ import app.morphe.extension.youtube.settings.Settings;
  * Remembers the playback position of ongoing livestreams.
  * <p>
  * An ongoing livestream is detected by its reported duration growing in real time
- * (the duration of a regular video never changes while watching). For detected
- * livestreams the last playback position is periodically saved and restored the
- * next time the same livestream is opened.
+ * (the duration of a regular video never changes while watching). Streams without
+ * a growing duration have no DVR seeking available, so restoring is not possible
+ * for them anyway. For detected livestreams the last playback position is
+ * periodically saved and restored the next time the same livestream is opened.
  */
 @SuppressWarnings("unused")
 public final class RememberLivestreamPositionPatch {
@@ -62,6 +56,23 @@ public final class RememberLivestreamPositionPatch {
     private static final int RESTORE_MAX_ATTEMPTS = 40;
 
     /**
+     * Delay between seek attempts when restoring.
+     */
+    private static final long RESTORE_SEEK_RETRY_DELAY_MS = 1000;
+
+    /**
+     * Maximum number of seek attempts. The player sometimes ignores very early
+     * seek calls (while it is still loading), so the seek is retried until the
+     * playback time matches the target.
+     */
+    private static final int RESTORE_SEEK_MAX_ATTEMPTS = 10;
+
+    /**
+     * How close the playback time must be to the target to consider a restore seek successful.
+     */
+    private static final long RESTORE_SEEK_TOLERANCE_MS = 3000;
+
+    /**
      * Maximum number of saved streams kept. Prevents unbounded growth of the settings storage.
      */
     private static final int MAX_SAVED_STREAMS = 100;
@@ -94,6 +105,13 @@ public final class RememberLivestreamPositionPatch {
 
     private static int restoreAttempts;
 
+    /**
+     * True while a saved position is waiting to be restored for the current video.
+     * While pending, saving is suppressed, otherwise the live playback position
+     * would overwrite the saved position before it can be restored.
+     */
+    private static volatile boolean restorePending;
+
     private static final class SavedPosition {
         final long position;
         final long videoLength;
@@ -110,17 +128,26 @@ public final class RememberLivestreamPositionPatch {
      * Injection point.
      */
     public static void newVideoStarted(VideoInformation.PlaybackController ignoredPlayerController) {
-        Logger.printInfo(() -> "RememberLivestream newVideoStarted id=" + VideoInformation.getVideoId() + " gen=" + newVideoGeneration);
+        final boolean settingEnabled = Settings.REMEMBER_LIVESTREAM_POSITION.get();
+        final boolean resumeWhenLive = Settings.REMEMBER_LIVESTREAM_POSITION_RESUME_WHEN_LIVE.get();
+        Logger.printInfo(() -> "RememberLivestream newVideoStarted id=" + VideoInformation.getVideoId()
+                + " gen=" + (newVideoGeneration + 1)
+                + " patchIncluded=" + isPatchIncluded()
+                + " settingEnabled=" + settingEnabled
+                + " resumeWhenLive=" + resumeWhenLive);
+
         baselineVideoLength = 0;
         livestreamConfirmed = false;
         lastSaveTime = 0;
         restoreAttempts = 0;
+        restorePending = false;
         newVideoGeneration++;
 
-        if (!Settings.REMEMBER_LIVESTREAM_POSITION.get()) {
+        if (!settingEnabled) {
             return;
         }
 
+        restorePending = true;
         startRestoreCheck(newVideoGeneration);
     }
 
@@ -133,6 +160,11 @@ public final class RememberLivestreamPositionPatch {
                 return;
             }
             if (playbackTimeMs <= 0) {
+                return;
+            }
+            if (restorePending) {
+                // A saved position is waiting to be restored. Do not save anything,
+                // otherwise the live position would overwrite the position to restore.
                 return;
             }
 
@@ -189,7 +221,8 @@ public final class RememberLivestreamPositionPatch {
 
             final SavedPosition saved = loadPlaybackPosition(videoId);
             if (saved == null) {
-                // Nothing remembered for this video.
+                // Nothing remembered for this video. Allow saving again.
+                restorePending = false;
                 return;
             }
 
@@ -203,25 +236,69 @@ public final class RememberLivestreamPositionPatch {
 
             // The stream is still ongoing and advanced since it was last watched.
             final boolean watchedAtLiveEdge = saved.videoLength - saved.position < LIVE_EDGE_THRESHOLD_MS;
-            Logger.printInfo(() -> "RememberLivestream checkRestore id=" + videoId + " savedPos=" + saved.position + " savedLen=" + saved.videoLength + " curLen=" + videoLength + " liveEdge=" + watchedAtLiveEdge);
-            if (!watchedAtLiveEdge || Settings.REMEMBER_LIVESTREAM_POSITION_RESUME_WHEN_LIVE.get()) {
-                Logger.printInfo(() -> "RememberLivestream Restoring livestream playback position: " + saved.position);
-                VideoInformation.seekTo(saved.position);
-            } else {
-                Logger.printInfo(() -> "RememberLivestream was watched live, jumping to the live edge");
-            }
+            Logger.printInfo(() -> "RememberLivestream checkRestore id=" + videoId
+                    + " savedPos=" + saved.position + " savedLen=" + saved.videoLength
+                    + " curLen=" + videoLength + " liveEdge=" + watchedAtLiveEdge);
 
-            // Position has been consumed. A fresh position will be saved while watching.
-            deletePlaybackPosition(videoId);
+            if (!watchedAtLiveEdge || Settings.REMEMBER_LIVESTREAM_POSITION_RESUME_WHEN_LIVE.get()) {
+                // Delete the saved position only after the seek is confirmed (or given up on).
+                attemptRestoreSeek(generation, videoId, saved.position, 1);
+            } else {
+                // Watched at the live edge and resuming is disabled. Consume the position.
+                Logger.printInfo(() -> "RememberLivestream was watched live, jumping to the live edge");
+                restorePending = false;
+                deletePlaybackPosition(videoId);
+            }
         } catch (Exception ex) {
+            restorePending = false;
             Logger.printException(() -> "checkRestore failure", ex);
         }
+    }
+
+    private static void attemptRestoreSeek(final long generation, final String videoId,
+                                           final long targetPositionMs, final int attempt) {
+        if (generation != newVideoGeneration) {
+            return;
+        }
+
+        final boolean seekAccepted = VideoInformation.seekTo(targetPositionMs);
+        Logger.printInfo(() -> "RememberLivestream restore attempt " + attempt + "/" + RESTORE_SEEK_MAX_ATTEMPTS
+                + " target=" + targetPositionMs + " accepted=" + seekAccepted);
+
+        Utils.runOnMainThreadDelayed(() -> {
+            if (generation != newVideoGeneration) {
+                return;
+            }
+
+            final long currentTime = VideoInformation.getVideoTime();
+            if (Math.abs(currentTime - targetPositionMs) <= RESTORE_SEEK_TOLERANCE_MS) {
+                Logger.printInfo(() -> "RememberLivestream Restored livestream playback position: " + currentTime);
+                restorePending = false;
+                deletePlaybackPosition(videoId);
+                return;
+            }
+
+            if (attempt < RESTORE_SEEK_MAX_ATTEMPTS) {
+                // Player may not be ready to seek yet. Try again.
+                attemptRestoreSeek(generation, videoId, targetPositionMs, attempt + 1);
+                return;
+            }
+
+            Logger.printInfo(() -> "RememberLivestream restore gave up. Current time: " + currentTime);
+            restorePending = false;
+            deletePlaybackPosition(videoId);
+        }, RESTORE_SEEK_RETRY_DELAY_MS);
     }
 
     private static void rescheduleOrGiveUp(final long generation) {
         if (++restoreAttempts <= RESTORE_MAX_ATTEMPTS) {
             startRestoreCheck(generation);
+            return;
         }
+
+        Logger.printInfo(() -> "RememberLivestream restore polling gave up. videoId=" + VideoInformation.getVideoId()
+                + " videoLength=" + VideoInformation.getVideoLength());
+        restorePending = false;
     }
 
     private static SharedPreferences preferences() {
@@ -270,27 +347,24 @@ public final class RememberLivestreamPositionPatch {
 
     private static void trimSavedPositions(SharedPreferences preferences) {
         final Map<String, ?> all = preferences.getAll();
-        if (all.size() <= MAX_SAVED_STREAMS) {
-            return;
-        }
 
-        // Delete the oldest entries until below the limit.
-        while (all.size() > MAX_SAVED_STREAMS) {
-            String oldestKey = null;
-            long oldestTimestamp = Long.MAX_VALUE;
-            for (Map.Entry<String, ?> entry : all.entrySet()) {
-                if (!entry.getKey().startsWith(STORAGE_KEY_PREFIX)) {
-                    continue;
-                }
-                final Object value = entry.getValue();
-                if (!(value instanceof String)) {
-                    continue;
-                }
-                final String[] parts = ((String) value).split("\\|");
-                if (parts.length != 3) {
-                    oldestKey = entry.getKey();
-                    break;
-                }
+        // Only the entries belonging to this patch are counted and trimmed.
+        // The settings preferences file contains many unrelated entries,
+        // so the total entry count cannot be used.
+        String oldestKey = null;
+        long oldestTimestamp = Long.MAX_VALUE;
+        int savedCount = 0;
+        for (Map.Entry<String, ?> entry : all.entrySet()) {
+            if (!entry.getKey().startsWith(STORAGE_KEY_PREFIX)) {
+                continue;
+            }
+
+            final Object value = entry.getValue();
+            final String[] parts = value instanceof String
+                    ? ((String) value).split("\\|")
+                    : null;
+            boolean valid = parts != null && parts.length == 3;
+            if (valid) {
                 try {
                     final long timestamp = Long.parseLong(parts[2]);
                     if (timestamp < oldestTimestamp) {
@@ -298,16 +372,44 @@ public final class RememberLivestreamPositionPatch {
                         oldestKey = entry.getKey();
                     }
                 } catch (NumberFormatException ex) {
-                    oldestKey = entry.getKey();
-                    break;
+                    valid = false;
                 }
             }
 
-            if (oldestKey == null) {
-                return;
+            if (valid) {
+                savedCount++;
+            } else {
+                // Corrupted entry. Delete it.
+                preferences.edit().remove(entry.getKey()).apply();
             }
+        }
+
+        // Delete the oldest entries until below the limit.
+        while (savedCount > MAX_SAVED_STREAMS && oldestKey != null) {
             preferences.edit().remove(oldestKey).apply();
-            all.remove(oldestKey);
+            savedCount--;
+
+            // Find the next oldest entry.
+            oldestKey = null;
+            oldestTimestamp = Long.MAX_VALUE;
+            for (Map.Entry<String, ?> entry : preferences.getAll().entrySet()) {
+                if (!entry.getKey().startsWith(STORAGE_KEY_PREFIX) || !(entry.getValue() instanceof String)) {
+                    continue;
+                }
+                try {
+                    final String[] parts = ((String) entry.getValue()).split("\\|");
+                    if (parts.length != 3) {
+                        continue;
+                    }
+                    final long timestamp = Long.parseLong(parts[2]);
+                    if (timestamp < oldestTimestamp) {
+                        oldestTimestamp = timestamp;
+                        oldestKey = entry.getKey();
+                    }
+                } catch (NumberFormatException ex) {
+                    // Ignore. Will be cleaned up on the next trim.
+                }
+            }
         }
     }
 }

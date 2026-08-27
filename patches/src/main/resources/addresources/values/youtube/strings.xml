@@ -1252,6 +1252,10 @@ Tap here to open DeArrow.ajay.app"</string>
     <string name="morphe_remember_livestream_position_resume_when_live_title">Resume even when watched live</string>
     <string name="morphe_remember_livestream_position_resume_when_live_summary">When reopening a livestream that was watched at the live edge, resume from the last position instead of going to live</string>
 
+    <!-- misc.debug.saveDebugLogFilePatch -->
+    <string name="morphe_save_log_to_file_title">Save log to file</string>
+    <string name="morphe_save_log_to_file_summary">Saves the recent Morphe log messages to a text file in the Download folder. Info and error messages are always captured; tap Debug in this screen to also capture debug messages</string>
+
     <!-- video.codecs.disableVideoCodecsPatch -->
     <string name="morphe_disable_hdr_video_title">Disable HDR video</string>
     <string name="morphe_force_avc_codec_title">Force AVC (H.264) codec</string>
