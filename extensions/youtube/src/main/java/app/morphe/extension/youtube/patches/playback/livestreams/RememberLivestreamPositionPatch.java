@@ -13,11 +13,13 @@ import app.morphe.extension.youtube.settings.Settings;
 /**
  * Remembers the playback position of ongoing livestreams.
  * <p>
- * An ongoing livestream is detected by its reported duration growing in real time
- * (the duration of a regular video never changes while watching). Streams without
- * a growing duration have no DVR seeking available, so restoring is not possible
- * for them anyway. For detected livestreams the last playback position is
- * periodically saved and restored the next time the same livestream is opened.
+ * An ongoing livestream is detected two ways: either the reported duration grows
+ * in real time (the duration of a regular video never changes while watching),
+ * or for streams with a capped duration (24/7 streams, where the reported length
+ * is the DVR window), by continuously playing at the live edge. Streams without
+ * a seekable DVR window cannot be restored anyway. For detected livestreams the
+ * last playback position is periodically saved and restored the next time the
+ * same livestream is opened.
  */
 @SuppressWarnings("unused")
 public final class RememberLivestreamPositionPatch {
@@ -73,6 +75,25 @@ public final class RememberLivestreamPositionPatch {
     private static final long RESTORE_SEEK_TOLERANCE_MS = 3000;
 
     /**
+     * Playback within this distance of the reported end of the video is considered
+     * "at the live edge". Used to detect live streams with a capped duration
+     * (24/7 streams), whose reported duration never grows.
+     * <p>
+     * The confirm time ({@link #LIVE_EDGE_CONFIRM_WHILE_WATCHING_MS}) must be
+     * larger than this zone, so a regular video always ends before the live
+     * stream confirmation can trigger and a VOD cannot be misdetected.
+     */
+    private static final long LIVE_EDGE_ZONE_MS = 35_000;
+
+    /**
+     * Playback time that must be spent advancing inside {@link #LIVE_EDGE_ZONE_MS}
+     * to confirm a capped duration (24/7) livestream. A regular video always ends
+     * before this much time can accumulate inside the live edge zone, so a VOD
+     * can never be misdetected.
+     */
+    private static final long LIVE_EDGE_CONFIRM_WHILE_WATCHING_MS = 40_000;
+
+    /**
      * Maximum number of saved streams kept. Prevents unbounded growth of the settings storage.
      */
     private static final int MAX_SAVED_STREAMS = 100;
@@ -112,6 +133,19 @@ public final class RememberLivestreamPositionPatch {
      */
     private static volatile boolean restorePending;
 
+    /**
+     * Wall clock time the user started continuously playing inside the live edge
+     * zone. Zero when not currently in the zone. Used to detect live streams
+     * with a capped duration (24/7 streams).
+     */
+    private static volatile long liveEdgeWatchStartMs;
+
+    /**
+     * Playback time of the previous videoTimeChanged call, used to detect
+     * whether playback is actually advancing.
+     */
+    private static volatile long lastVideoTimeMs;
+
     private static final class SavedPosition {
         final long position;
         final long videoLength;
@@ -141,6 +175,8 @@ public final class RememberLivestreamPositionPatch {
         lastSaveTime = 0;
         restoreAttempts = 0;
         restorePending = false;
+        liveEdgeWatchStartMs = 0;
+        lastVideoTimeMs = 0;
         newVideoGeneration++;
 
         if (!settingEnabled) {
@@ -182,11 +218,36 @@ public final class RememberLivestreamPositionPatch {
             if (!livestreamConfirmed) {
                 // The duration of an ongoing livestream grows in real time,
                 // while the duration of a regular video never changes.
-                if (videoLength - baselineVideoLength < LIVESTREAM_DURATION_GROWTH_WHILE_WATCHING_MS) {
-                    return;
+                if (videoLength - baselineVideoLength >= LIVESTREAM_DURATION_GROWTH_WHILE_WATCHING_MS) {
+                    livestreamConfirmed = true;
+                    Logger.printInfo(() -> "RememberLivestream Detected ongoing livestream (growing duration) len=" + videoLength + " base=" + baselineVideoLength);
+                } else {
+                    // Streams with a capped duration (24/7 streams) never report a growing
+                    // duration: the reported length is the DVR window (12 hours by default,
+                    // 7 days with the Morphe 'Expand livestream DVR duration' setting).
+                    // These are detected by playing at the live edge, which is where
+                    // YouTube always joins a livestream. A regular video cannot be
+                    // misdetected: playback always ends before the confirm time can
+                    // accumulate inside the live edge zone.
+                    final boolean advancing = playbackTimeMs > lastVideoTimeMs + 200;
+                    lastVideoTimeMs = playbackTimeMs;
+
+                    if (videoLength - playbackTimeMs <= LIVE_EDGE_ZONE_MS && advancing) {
+                        final long nowMs = System.currentTimeMillis();
+                        if (liveEdgeWatchStartMs == 0) {
+                            liveEdgeWatchStartMs = nowMs;
+                        } else if (nowMs - liveEdgeWatchStartMs >= LIVE_EDGE_CONFIRM_WHILE_WATCHING_MS) {
+                            livestreamConfirmed = true;
+                            Logger.printInfo(() -> "RememberLivestream Detected ongoing livestream (capped duration, 24/7) len=" + videoLength + " pos=" + playbackTimeMs);
+                        }
+                    } else {
+                        liveEdgeWatchStartMs = 0;
+                    }
+
+                    if (!livestreamConfirmed) {
+                        return;
+                    }
                 }
-                livestreamConfirmed = true;
-                Logger.printInfo(() -> "RememberLivestream Detected ongoing livestream len=" + videoLength + " base=" + baselineVideoLength);
             }
 
             final long now = System.currentTimeMillis();
@@ -227,9 +288,23 @@ public final class RememberLivestreamPositionPatch {
             }
 
             final long videoLength = VideoInformation.getVideoLength();
-            if (videoLength <= 0 || videoLength < saved.videoLength + LIVESTREAM_DURATION_GROWTH_ON_REOPEN_MS) {
-                // The duration has not yet grown beyond the saved value, so it is not yet
-                // confirmed the stream is still ongoing. Keep checking for a while.
+            if (videoLength <= 0) {
+                // Player is not fully loaded yet.
+                rescheduleOrGiveUp(generation);
+                return;
+            }
+
+            // YouTube always joins a livestream at the live edge, while a regular video
+            // starts at the beginning. Joining at the live edge confirms the saved video
+            // is an ongoing livestream. This also covers streams with a capped duration
+            // (24/7 streams), whose reported duration never grows.
+            final long currentVideoTime = VideoInformation.getVideoTime();
+            final boolean joinedAtLiveEdge = currentVideoTime > 0
+                    && videoLength - currentVideoTime <= LIVE_EDGE_ZONE_MS;
+
+            if (videoLength < saved.videoLength + LIVESTREAM_DURATION_GROWTH_ON_REOPEN_MS
+                    && !joinedAtLiveEdge) {
+                // Not yet confirmed the stream is still ongoing. Keep checking for a while.
                 rescheduleOrGiveUp(generation);
                 return;
             }
