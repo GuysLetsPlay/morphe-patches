@@ -1252,6 +1252,13 @@ Tap here to open DeArrow.ajay.app"</string>
     <string name="morphe_remember_livestream_position_resume_when_live_title">Resume even when watched live</string>
     <string name="morphe_remember_livestream_position_resume_when_live_summary">When reopening a livestream that was watched at the live edge, resume from the last position instead of going to live</string>
 
+    <!-- video.sleepTimer.alwaysOnSleepTimerPatch -->
+    <string name="morphe_always_on_sleep_timer_title">Always-on sleep timer</string>
+    <string name="morphe_always_on_sleep_timer_summary">Automatically stops playback after the chosen amount of idle minutes. Any tap on the video restarts the timer, so you can never fall asleep to a video playing all night</string>
+    <string name="morphe_always_on_sleep_timer_duration_title">Sleep timer duration (minutes)</string>
+    <string name="morphe_always_on_sleep_timer_duration_summary">Minutes of idle time before playback stops. Playback also stops when a video ends</string>
+    <string name="morphe_always_on_sleep_timer_stopped_toast">Sleep timer stopped playback. Tap the screen to keep watching</string>
+
     <!-- misc.debug.saveDebugLogFilePatch -->
     <string name="morphe_save_log_to_file_title">Save log to file</string>
     <string name="morphe_save_log_to_file_summary">Saves the recent Morphe log messages to a text file in the Download folder. Info and error messages are always captured; tap Debug in this screen to also capture debug messages</string>

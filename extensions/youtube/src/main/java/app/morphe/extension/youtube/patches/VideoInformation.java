@@ -60,8 +60,9 @@ public final class VideoInformation {
      * Interface to use obfuscated methods.
      */
     public interface ExoPlayerImpl {
-        // Method is added during patching.
+        // Methods are added during patching.
         void patch_setPlaybackParameters(float speed, float pitch);
+        void patch_pause();
     }
 
     /**
@@ -854,6 +855,28 @@ public final class VideoInformation {
             Logger.printDebug(() -> "Video playbackParameters changed, speed: " + speed + " pitch: " + pitch);
         } else {
             Logger.LogMessage logMessage = () -> "Debug: Cannot change speed parameters, menu interface is null";
+            if (Settings.DEBUG.get()) {
+                Logger.printException(logMessage);
+            } else {
+                Logger.printDebug(logMessage);
+            }
+        }
+    }
+
+    /**
+     * Pauses the current playback. Calling this has the same effect as the
+     * user tapping the pause button, and behaves the same as YT's own
+     * sleep timer: playback stops and no more video/data is loaded.
+     */
+    public static void pauseVideo() {
+        Utils.verifyOnMainThread();
+
+        ExoPlayerImpl exoPlayerImpl = exoPlayerImplRef.get();
+        if (exoPlayerImpl != null) {
+            exoPlayerImpl.patch_pause();
+            Logger.printDebug(() -> "Video paused");
+        } else {
+            Logger.LogMessage logMessage = () -> "Debug: Cannot pause video, ExoPlayer interface is null";
             if (Settings.DEBUG.get()) {
                 Logger.printException(logMessage);
             } else {

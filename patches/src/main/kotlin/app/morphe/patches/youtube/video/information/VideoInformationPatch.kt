@@ -601,8 +601,8 @@ val videoInformationPatch = bytecodePatch(
         }
 
         setPlaybackParametersFingerprint.classDef.apply {
-            // Add interface and helper method to allow extension code
-            // to directly set the ExoPlayer playback parameters.
+            // Add interface and helper methods to allow extension code
+            // to directly control the ExoPlayerImpl playback.
             interfaces.add(EXTENSION_EXOPLAYERIMPL_INTERFACE)
 
             methods.add(
@@ -625,6 +625,29 @@ val videoInformationPatch = bytecodePatch(
                                 new-instance v0, $playbackParametersType
                                 invoke-direct { v0, p1, p2 }, $playbackParametersConstructorReference
                                 invoke-virtual { p0, v0 }, $setPlaybackParametersReference
+                                return-void
+                            """
+                        )
+                    }
+                )
+
+            // Helper method to pause the player, used by the always-on sleep timer.
+            // The class implements androidx.media3.exoplayer.ExoPlayer, which has pause().
+            methods.add(
+                    ImmutableMethod(
+                        type,
+                        "patch_pause",
+                        listOf(),
+                        "V",
+                        AccessFlags.PUBLIC.value or AccessFlags.FINAL.value,
+                        null,
+                        null,
+                        MutableMethodImplementation(2),
+                    ).toMutable().apply {
+                        addInstructions(
+                            0,
+                            """
+                                invoke-virtual { p0 }, $type->pause()V
                                 return-void
                             """
                         )

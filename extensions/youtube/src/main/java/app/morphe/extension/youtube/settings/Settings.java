@@ -82,6 +82,10 @@ public class Settings extends SharedYouTubeSettings {
     public static final BooleanSetting REMEMBER_LIVESTREAM_POSITION = new BooleanSetting("morphe_remember_livestream_position", FALSE);
     public static final BooleanSetting REMEMBER_LIVESTREAM_POSITION_RESUME_WHEN_LIVE = new BooleanSetting("morphe_remember_livestream_position_resume_when_live", FALSE, false, parent(REMEMBER_LIVESTREAM_POSITION));
 
+    // Sleep timer
+    public static final BooleanSetting ALWAYS_ON_SLEEP_TIMER = new BooleanSetting("morphe_always_on_sleep_timer", FALSE);
+    public static final LongSetting ALWAYS_ON_SLEEP_TIMER_DURATION = new LongSetting("morphe_always_on_sleep_timer_duration", 20L, parent(ALWAYS_ON_SLEEP_TIMER));
+
     // Speed
     public static final FloatSetting SPEED_TAP_AND_HOLD = new FloatSetting("morphe_speed_tap_and_hold", 2.0f, true);
     public static final BooleanSetting REMEMBER_PLAYBACK_SPEED_LAST_SELECTED = new BooleanSetting("morphe_remember_playback_speed_last_selected", FALSE);
