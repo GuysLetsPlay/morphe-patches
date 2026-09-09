@@ -35,14 +35,14 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 ## 🩹 Patches list
 
 <!-- PATCHES_START -->
-> **[v1.40.0-dev.3](https://github.com/GuysLetsPlay/morphe-patches/releases/tag/v1.40.0-dev.3)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;137 patches total
+> **[v1.40.0](https://github.com/GuysLetsPlay/morphe-patches/releases/tag/v1.40.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;139 patches total
 <details>
-<summary>📦 YouTube&nbsp;&nbsp;•&nbsp;&nbsp;76 patches</summary>
+<summary>📦 YouTube&nbsp;&nbsp;•&nbsp;&nbsp;78 patches</summary>
 <br>
 
 **🎯 Supported versions:**
 
-| 🧪&nbsp;21.33.321 | 🧪&nbsp;21.32.2 | 🧪&nbsp;21.28.208 | 21.04.223 | 20.51.39 | 20.31.42 | 20.21.37 |
+| 🧪&nbsp;21.34.243 | 🧪&nbsp;21.33.321 | 🧪&nbsp;21.28.208 | 21.04.223 | 20.51.39 | 20.31.42 | 20.21.37 |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
@@ -106,10 +106,12 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 | [Playback in feeds](#playback-in-feeds) | Adds the 'Playback in feeds' setting of YouTube to the Morphe settings, where it is always available even if YouTube hides it. |  |
 | [Playback speed](#playback-speed) | Adds options to customize available playback speeds, set a default playback speed, and show a speed dialog button in the video player. |  |
 | [Reload video](#reload-video) | Adds an option to display reload video button in the video player. |  |
+| [Remember livestream playback position](#remember-livestream-playback-position) | Adds an option to remember the playback position of ongoing livestreams and resume from there when reopening a livestream. |  |
 | [Remove background playback restrictions](#remove-background-playback-restrictions) | Removes restrictions on background playback, including playing kids videos in the background. |  |
 | [Remove viewer discretion dialog](#remove-viewer-discretion-dialog) | Adds an option to remove the dialog that appears when opening a video that has been age-restricted by accepting it automatically. This does not bypass the age restriction. |  |
 | [Return YouTube Dislike](#return-youtube-dislike) | Adds an option to show the dislike count of videos with Return YouTube Dislike. |  |
 | [Sanitize sharing links](#sanitize-sharing-links) | Removes the tracking query parameters from shared links. |  |
+| [Save debug log to file](#save-debug-log-to-file) | Adds a setting in Morphe settings under Misc to save the recent log messages to a file in the public Download folder. Useful for debugging without adb. |  |
 | [Save to watch later](#save-to-watch-later) | Adds an option to display save to watch later button in the video player. |  |
 | [Seekbar](#seekbar) | Adds options to show old seekbar thumbnails, disable precise seeking when swiping up on the seekbar, slide to seek instead of playing at 2x speed when pressing and holding, tapping the player seekbar to seek, hiding the video player seekbar, enabling seeking in livestreams, and expanding the livestream DVR duration. |  |
 | [Settings menu filter](#settings-menu-filter) | Adds an option to hide items on the standard YouTube settings screen by their visible name. |  |
@@ -119,7 +121,7 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 | [Spoof device dimensions](#spoof-device-dimensions) | Adds an option to spoof the device dimensions which can unlock higher video qualities. |  |
 | [Spoof video streams](#spoof-video-streams) | Adds options to spoof the client video streams to fix playback. |  |
 | [Swipe controls](#swipe-controls) | Adds options to enable and configure volume and brightness swipe controls. |  |
-| [Theme](#theme) | Adds options for theming and applies a custom background theme (dark background theme defaults to pure black). | • Dark theme background color<br>• Light theme background color |
+| [Theme](#theme) | Adds options for theming, and settings to change the app foreground and background colors. | • Dark theme color<br>• Light theme color |
 | [Video quality](#video-quality) | Adds options to set default video qualities and always use the advanced video quality menu. |  |
 | [Voice over translation](#voice-over-translation) | Adds additional voice over languages using text-to-speech synchronized to the video playback. |  |
 | [Wide search bar](#wide-search-bar) | Adds a wide search bar to the top of the home and subscription feed. |  |
@@ -132,7 +134,7 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 
 **🎯 Supported versions:**
 
-| 🧪&nbsp;9.31.51 | 🧪&nbsp;9.30.52 | 🧪&nbsp;9.29.54 | 9.15.51 |
+| 🧪&nbsp;9.33.52 | 🧪&nbsp;9.32.51 | 🧪&nbsp;9.31.51 | 9.15.51 |
 | :---: | :---: | :---: | :---: |
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
@@ -174,7 +176,7 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 | [SponsorBlock](#sponsorblock) | Adds options to enable and configure SponsorBlock, which can skip non-music segments. |  |
 | [Spoof app version](#spoof-app-version) | Adds an option to trick the app into thinking you are running an older version. |  |
 | [Spoof video streams](#spoof-video-streams) | Adds options to spoof the client video streams to fix playback. |  |
-| [Theme](#theme) | Adds options for theming and applies a custom background theme (dark background theme defaults to pure black). | • Dark theme background color |
+| [Theme](#theme) | Adds options for theming, and settings to change the app foreground and background colors. | • Dark theme color |
 | [Third-party lyrics](#third-party-lyrics) | Adds an option to show synced lyrics from LRCLIB or KuGou in the lyrics panel. |  |
 
 </details>
@@ -185,7 +187,7 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 
 **🎯 Supported versions:**
 
-| 🧪&nbsp;2026.32.0 | 🧪&nbsp;2026.31.1 | 🧪&nbsp;2026.24.0 | 2026.14.0 | 2026.04.0 |
+| 🧪&nbsp;2026.34.0 | 🧪&nbsp;2026.32.0 | 🧪&nbsp;2026.24.0 | 2026.14.0 | 2026.04.0 |
 | :---: | :---: | :---: | :---: | :---: |
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
@@ -218,8 +220,8 @@ All modifications made by Morphe, along with their dates, can be found in the Gi
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
 | [Change installer source](#change-installer-source) | Spoofs the installer source so the app appears to be installed from an app store. | • Spoofed package installer name |
-| [Clone app](#clone-app) | Changes the app package name to allow installing the same app multiple times. By default ".morphe" is appended the package name. Each cloned install must use a unique package name. Cloning does not work with all apps and using this patch may cause app crashes or other unexpected behavior. | • Package name<br>• Update permissions<br>• Update providers |
-| [Disable Play Store updates](#disable-play-store-updates) | Disables Play Store updates by setting the version code to the maximum allowed. This patch does not work if the app is installed by mounting and may cause unexpected issues with some apps. |  |
+| [Clone app](#clone-app) | Changes the app package name to allow installing the same app multiple times. By default ".morphe" is appended to the package name. Each cloned install must use a unique package name. Cloning does not work with all apps and using this patch may cause app crashes or other unexpected behavior. | • Package name<br>• Update permissions<br>• Update providers |
+| [Disable Play Store updates](#disable-play-store-updates) | Disables Play Store updates by setting the version code to the maximum allowed. This patch may cause unexpected issues with some apps and does not work if the app is installed by root mounting |  |
 | [Override certificate pinning](#override-certificate-pinning) | Overrides certificate pinning, allowing to inspect traffic via a proxy. |  |
 
 </details>
