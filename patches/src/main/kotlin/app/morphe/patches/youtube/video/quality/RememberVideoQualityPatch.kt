@@ -64,11 +64,27 @@ val rememberVideoQualityPatch = bytecodePatch {
                 entryValuesKey = "morphe_shorts_quality_default_entry_values"
             ),
             SwitchPreference("morphe_remember_shorts_quality_last_selected", summary = true),
-            SwitchPreference("morphe_remember_video_quality_last_selected_toast", summary = true),
-            SwitchPreference("morphe_override_initial_video_quality", summary = true),
+            SwitchPreference("morphe_remember_video_quality_last_selected_toast", summary = true)
         ))
 
         onCreateHook(EXTENSION_CLASS, "newVideoStarted")
+
+        // Force the feature flags that gate the initial fixed video resolution.
+        // Stock YouTube may have these flags off, in which case the initial video quality
+        // set by getInitialVideoQuality() is ignored and playback starts at
+        // 'Auto (recommended)' quality.
+        // https://github.com/MorpheApp/morphe-patches/issues/1156
+        listOf(
+            InitialVideoQualityFeatureFlagPrimaryFingerprint,
+            InitialVideoQualityFeatureFlagSecondaryFingerprint
+        ).forEach { fingerprint ->
+            fingerprint.matchAll().forEach { match ->
+                match.method.insertLiteralOverride(
+                    match.instructionMatches.first().index,
+                    "$EXTENSION_CLASS->overrideInitialVideoQualityFeatureFlag(Z)Z"
+                )
+            }
+        }
 
         val initialResolutionField = PlaybackStartParametersToStringFingerprint.method
                 .findFieldFromToString(FIXED_RESOLUTION_STRING)
@@ -85,19 +101,6 @@ val rememberVideoQualityPatch = bytecodePatch {
                         invoke-static { v$register }, $EXTENSION_CLASS->getInitialVideoQuality(Lj$/util/Optional;)Lj$/util/Optional;
                         move-result-object v$register
                     """
-                )
-            }
-        }
-
-        // Fix initial default video quality.
-        listOf(
-            PlatypusFeatureFlagPrimaryFingerprint,
-            PlatypusFeatureFlagSecondaryFingerprint
-        ).forEach { fingerprint ->
-            fingerprint.matchAll().forEach { fingerprint ->
-                fingerprint.method.insertLiteralOverride(
-                    fingerprint.instructionMatches.first().index,
-                    "$EXTENSION_CLASS->overrideInitialVideoQualityFeatureFlag(Z)Z"
                 )
             }
         }

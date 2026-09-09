@@ -26,9 +26,6 @@ import j$.util.Optional;
 
 @SuppressWarnings({"rawtypes", "unused"})
 public class RememberVideoQualityPatch {
-    // Set the access modifier to final to override the flag only after the state snapshot is reloaded.
-    private static final boolean SETTINGS_INITIALIZED = Settings.SETTINGS_INITIALIZED.get();
-    private static final boolean OVERRIDE_INITIAL_VIDEO_QUALITY = Settings.OVERRIDE_INITIAL_VIDEO_QUALITY.get();
 
     private static final IntegerSetting videoQualityWifi = Settings.VIDEO_QUALITY_DEFAULT_WIFI;
     private static final IntegerSetting videoQualityMobile = Settings.VIDEO_QUALITY_DEFAULT_MOBILE;
@@ -110,6 +107,33 @@ public class RememberVideoQualityPatch {
 
     /**
      * Injection point.
+     * <p>
+     * YouTube gates whether the initial fixed video resolution is honored behind
+     * feature flags. Stock YouTube may have these flags off, causing the initial video
+     * quality returned by {@link #getInitialVideoQuality(Optional)} to be ignored and
+     * playback to start at 'Auto (recommended)' quality.
+     * <p>
+     * Force the flag on whenever a non-automatic default video quality is set for the
+     * current network type.
+     *
+     * @see <a href="https://github.com/MorpheApp/morphe-patches/issues/1156">issue #1156</a>
+     */
+    public static boolean overrideInitialVideoQualityFeatureFlag(boolean originalValue) {
+        try {
+            if (getDefaultQualityResolution() != VideoInformation.AUTOMATIC_VIDEO_QUALITY_VALUE) {
+                Logger.printDebug(() -> "Overriding initial video quality feature flag to true");
+                return true;
+            }
+        } catch (Exception ex) {
+            // Feature flags can be evaluated very early during app startup,
+            // before settings or the app context are available.
+            Logger.printException(() -> "overrideInitialVideoQualityFeatureFlag failure", ex);
+        }
+        return originalValue;
+    }
+
+    /**
+     * Injection point.
      * @param userSelectedQualityIndex Element index of {@link VideoInformation#getCurrentQualities()}.
      */
     public static void userChangedShortsQuality(int userSelectedQualityIndex) {
@@ -130,7 +154,7 @@ public class RememberVideoQualityPatch {
 
     /**
      * Injection point.  Regular videos.
-     * @param videoResolution Human readable resolution: 480, 720, 1080.
+     * @param videoResolution Human-readable resolution: 480, 720, 1080.
      */
     public static void userChangedQuality(int videoResolution) {
         Utils.verifyOnMainThread();
@@ -146,19 +170,5 @@ public class RememberVideoQualityPatch {
      */
     public static void newVideoStarted(VideoInformation.PlaybackController ignoredPlayerController) {
         VideoInformation.setDesiredVideoResolution(getDefaultQualityResolution());
-    }
-
-    /**
-     * Injection point.
-     *
-     * @return  If true, default video quality is applied without delay after the video starts.
-     *          Turn this off if you experience playback issues with the Android VR AVC codec.
-     */
-    public static boolean overrideInitialVideoQualityFeatureFlag(boolean originalValue) {
-        if (SETTINGS_INITIALIZED) {
-            Logger.printDebug(() -> "Override initial video quality feature flag to " + OVERRIDE_INITIAL_VIDEO_QUALITY);
-            return OVERRIDE_INITIAL_VIDEO_QUALITY;
-        }
-        return originalValue;
     }
 }

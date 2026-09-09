@@ -34,6 +34,26 @@ internal object NewAdvancedQualityMenuStyleFlyout : Fingerprint(
     )
 )
 
+/**
+ * Feature flags that gate whether the initial fixed video resolution is honored.
+ * Stock YouTube may have these flags off (A/B test), in which case the initial video
+ * quality set by the extension is ignored and playback starts at 'Auto (recommended)'
+ * quality.
+ *
+ * @see <a href="https://github.com/MorpheApp/morphe-patches/issues/1156">issue #1156</a>
+ */
+internal object InitialVideoQualityFeatureFlagPrimaryFingerprint : Fingerprint(
+    filters = listOf(
+        literal(45624008)
+    )
+)
+
+internal object InitialVideoQualityFeatureFlagSecondaryFingerprint : Fingerprint(
+    filters = listOf(
+        literal(45408049)
+    )
+)
+
 internal fun getCurrentVideoFormatConstructorFingerprint(
     videoQualityArray: String
 ) = object : Fingerprint(
@@ -75,18 +95,6 @@ internal object HidePremiumVideoQualityGetArrayFingerprint : Fingerprint(
     custom = { _, classDef ->
         AccessFlags.SYNTHETIC.isSet(classDef.accessFlags)
     }
-)
-
-internal object PlatypusFeatureFlagPrimaryFingerprint : Fingerprint(
-    filters = listOf(
-        literal(45624008L)
-    )
-)
-
-internal object PlatypusFeatureFlagSecondaryFingerprint : Fingerprint(
-    filters = listOf(
-        literal(45408049L)
-    )
 )
 
 internal object PlaybackStartParametersToStringFingerprint : Fingerprint(
