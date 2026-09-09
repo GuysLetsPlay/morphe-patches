@@ -107,6 +107,33 @@ public class RememberVideoQualityPatch {
 
     /**
      * Injection point.
+     * <p>
+     * YouTube gates whether the initial fixed video resolution is honored behind
+     * feature flags. Stock YouTube may have these flags off, causing the initial video
+     * quality returned by {@link #getInitialVideoQuality(Optional)} to be ignored and
+     * playback to start at 'Auto (recommended)' quality.
+     * <p>
+     * Force the flag on whenever a non-automatic default video quality is set for the
+     * current network type.
+     *
+     * @see <a href="https://github.com/MorpheApp/morphe-patches/issues/1156">issue #1156</a>
+     */
+    public static boolean overrideInitialVideoQualityFeatureFlag(boolean originalValue) {
+        try {
+            if (getDefaultQualityResolution() != VideoInformation.AUTOMATIC_VIDEO_QUALITY_VALUE) {
+                Logger.printDebug(() -> "Overriding initial video quality feature flag to true");
+                return true;
+            }
+        } catch (Exception ex) {
+            // Feature flags can be evaluated very early during app startup,
+            // before settings or the app context are available.
+            Logger.printException(() -> "overrideInitialVideoQualityFeatureFlag failure", ex);
+        }
+        return originalValue;
+    }
+
+    /**
+     * Injection point.
      * @param userSelectedQualityIndex Element index of {@link VideoInformation#getCurrentQualities()}.
      */
     public static void userChangedShortsQuality(int userSelectedQualityIndex) {

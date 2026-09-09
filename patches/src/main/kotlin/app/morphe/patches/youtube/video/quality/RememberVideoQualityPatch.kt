@@ -24,6 +24,7 @@ import app.morphe.patches.youtube.shared.VideoQualityChangedFingerprint
 import app.morphe.patches.youtube.video.information.onCreateHook
 import app.morphe.patches.youtube.video.information.videoInformationPatch
 import app.morphe.util.findFieldFromToString
+import app.morphe.util.insertLiteralOverride
 import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 
 private const val EXTENSION_CLASS =
@@ -67,6 +68,23 @@ val rememberVideoQualityPatch = bytecodePatch {
         ))
 
         onCreateHook(EXTENSION_CLASS, "newVideoStarted")
+
+        // Force the feature flags that gate the initial fixed video resolution.
+        // Stock YouTube may have these flags off, in which case the initial video quality
+        // set by getInitialVideoQuality() is ignored and playback starts at
+        // 'Auto (recommended)' quality.
+        // https://github.com/MorpheApp/morphe-patches/issues/1156
+        listOf(
+            InitialVideoQualityFeatureFlagPrimaryFingerprint,
+            InitialVideoQualityFeatureFlagSecondaryFingerprint
+        ).forEach { fingerprint ->
+            fingerprint.matchAll().forEach { match ->
+                match.method.insertLiteralOverride(
+                    match.instructionMatches.first().index,
+                    "$EXTENSION_CLASS->overrideInitialVideoQualityFeatureFlag(Z)Z"
+                )
+            }
+        }
 
         val initialResolutionField = PlaybackStartParametersToStringFingerprint.method
                 .findFieldFromToString(FIXED_RESOLUTION_STRING)
