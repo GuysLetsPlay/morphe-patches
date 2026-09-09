@@ -85,6 +85,8 @@ public final class LayoutComponentsFilter extends Filter {
     private final StringFilterGroup videoLabels;
     private final ByteArrayFilterGroupList videoLabelsGroupList = new ByteArrayFilterGroupList();
     private final StringFilterGroup videoRecommendationLabels;
+    private final StringFilterGroup livestreamCards;
+    private final ByteArrayFilterGroup livestreamBuffer;
 
     public enum ExpandableCardStyle {
         SHOW_ALL,
@@ -118,6 +120,17 @@ public final class LayoutComponentsFilter extends Filter {
                 "live_chat_ep_entrypoint.e"
         );
 
+        // Filter only the indicator layer. Filtering the broader live-avatar node removes
+        // the channel picture along with the red ring.
+        final var livestreamIndicators = new StringFilterGroup(
+                Settings.HIDE_LIVESTREAMS,
+                "live_badge",
+                "live_ring",
+                "live_waves",
+                "avatar_ring",
+                "live_streaming_badge"
+        );
+
         // The 'Invite others to message' card of the Messages section shown at the top of
         // the Notifications tab, wrapped in a linear layout and identified by a unique,
         // language independent buffer string.
@@ -147,6 +160,7 @@ public final class LayoutComponentsFilter extends Filter {
                 cellDivider,
                 exploreTopicsShelf,
                 liveChatReplay,
+                livestreamIndicators,
                 inviteToMessageCard,
                 seekEduOverlay
         );
@@ -379,6 +393,27 @@ public final class LayoutComponentsFilter extends Filter {
                 "video_lockup_thumbnail.e"
         );
 
+        // Video card layouts are shared by normal videos and streams. The live-state fields
+        // in the protobuf buffer distinguish the latter without relying on localized text.
+        livestreamCards = new StringFilterGroup(
+                Settings.HIDE_LIVESTREAMS,
+                "video_lockup",
+                "video_with_context",
+                "live"
+        );
+        livestreamBuffer = new ByteArrayFilterGroup(
+                null,
+                "is_live",
+                "is_livestream",
+                "is_live_stream",
+                "live_streaming",
+                "live_badge",
+                "live_stream",
+                "LIVE_BADGE",
+                "LIVE_WAVES",
+                "LiveIndicatorEntityModel"
+        );
+
         videoLabels = new StringFilterGroup(
                 null,
                 "|badge.e"
@@ -447,6 +482,7 @@ public final class LayoutComponentsFilter extends Filter {
                 videoLabels,
                 videoTitle,
                 videoRecommendationLabels,
+                livestreamCards,
                 webLinkPanel
         );
     }
@@ -564,6 +600,19 @@ public final class LayoutComponentsFilter extends Filter {
 
         if (matchedGroup == videoRecommendationLabels) {
             return NavigationBar.isSearchBarActive();
+        }
+
+        if (matchedGroup == livestreamCards) {
+            if (path.contains("video_lockup")) {
+                Logger.printDebug(() -> "Hide livestreams candidate: path=" + path
+                        + " identifier=" + identifier
+                        + " buffer=" + asciiStrings.getStrings());
+            }
+
+            // YouTube names the current-live indicator components with "live". Card roots
+            // are not named consistently across feed, channel and recommendation surfaces,
+            // so use the serialized live markers for generic card paths as a fallback.
+            return path.contains("live") || livestreamBuffer.check(buffer).isFiltered();
         }
 
         return true;
