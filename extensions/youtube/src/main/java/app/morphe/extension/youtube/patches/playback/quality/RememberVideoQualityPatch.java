@@ -12,6 +12,15 @@ package app.morphe.extension.youtube.patches.playback.quality;
 
 import static app.morphe.extension.shared.StringRef.str;
 
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.os.Handler;
+import android.os.Looper;
+
+import kotlin.Unit;
+
 import androidx.annotation.NonNull;
 
 import app.morphe.extension.shared.Logger;
@@ -21,6 +30,7 @@ import app.morphe.extension.shared.settings.IntegerSetting;
 import app.morphe.extension.youtube.patches.VideoInformation;
 import app.morphe.extension.youtube.patches.VideoInformation.*;
 import app.morphe.extension.youtube.settings.Settings;
+import app.morphe.extension.youtube.shared.PlayerType;
 import app.morphe.extension.youtube.shared.ShortsPlayerState;
 import j$.util.Optional;
 
@@ -32,6 +42,24 @@ public class RememberVideoQualityPatch {
     private static final IntegerSetting shortsQualityWifi = Settings.SHORTS_QUALITY_DEFAULT_WIFI;
     private static final IntegerSetting shortsQualityMobile = Settings.SHORTS_QUALITY_DEFAULT_MOBILE;
 
+    private static final Object networkCallbackLock = new Object();
+    private static volatile ConnectivityManager networkManager;
+    /**
+     * Network type of the default network, tracked using a system network callback.
+     * This is updated the moment the OS switches the default network, which can be
+     * noticeably earlier than {@link Utils#getNetworkType()} (and YouTube's internal
+     * state) reflects the change. Null until the callback first fires.
+     */
+    private static volatile Boolean currentNetworkIsMobile;
+
+    private static boolean isMobileNetwork() {
+        final Boolean tracked = currentNetworkIsMobile;
+        if (tracked != null) {
+            return tracked;
+        }
+        return Utils.getNetworkType() == Utils.NetworkType.MOBILE;
+    }
+
     public static boolean shouldRememberVideoQuality() {
         BooleanSetting preference = ShortsPlayerState.isOpen()
                 ? Settings.REMEMBER_SHORTS_QUALITY_LAST_SELECTED
@@ -41,7 +69,7 @@ public class RememberVideoQualityPatch {
 
     public static int getDefaultQualityResolution() {
         final boolean isShorts = ShortsPlayerState.isOpen();
-        IntegerSetting preference = Utils.getNetworkType() == Utils.NetworkType.MOBILE
+        IntegerSetting preference = isMobileNetwork()
                 ? (isShorts ? shortsQualityMobile : videoQualityMobile)
                 : (isShorts ? shortsQualityWifi : videoQualityWifi);
         return preference.get();
@@ -49,7 +77,7 @@ public class RememberVideoQualityPatch {
 
     public static void saveDefaultQuality(int qualityResolution) {
         final boolean shortPlayerOpen = ShortsPlayerState.isOpen();
-        final boolean isMobile = Utils.getNetworkType() == Utils.NetworkType.MOBILE;
+        final boolean isMobile = isMobileNetwork();
         IntegerSetting qualitySetting;
         if (isMobile) {
             qualitySetting = shortPlayerOpen ? shortsQualityMobile : videoQualityMobile;
@@ -133,7 +161,7 @@ public class RememberVideoQualityPatch {
         Utils.verifyOnMainThread();
         Logger.printDebug(() -> "User changed quality to: " + videoResolution);
 
-        if (shouldRememberVideoQuality()) {
+        if (shouldRememberVideoQuality() && !VideoInformation.programmaticQualityChangeRecently()) {
             saveDefaultQuality(videoResolution);
         }
     }
@@ -142,6 +170,108 @@ public class RememberVideoQualityPatch {
      * Injection point.
      */
     public static void newVideoStarted(VideoInformation.PlaybackController ignoredPlayerController) {
+        ensureNetworkAndPlayerHooks();
         VideoInformation.setDesiredVideoResolution(getDefaultQualityResolution());
+        // Re-check shortly after the video starts. If the network type changed immediately
+        // before playback, the initially chosen quality (and the network type reported to
+        // YouTube) can be stale.
+        new Handler(Looper.getMainLooper()).postDelayed(
+                RememberVideoQualityPatch::applyDefaultQualityAfterNetworkOrPlayerChange, 1500);
+    }
+
+    private static void ensureNetworkAndPlayerHooks() {
+        if (networkManager != null) {
+            return;
+        }
+        synchronized (networkCallbackLock) {
+            if (networkManager != null) {
+                return;
+            }
+            try {
+                Context context = Utils.getContext();
+                if (context == null) {
+                    return;
+                }
+                ConnectivityManager connectivityManager = (ConnectivityManager)
+                        context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                if (connectivityManager == null) {
+                    return;
+                }
+
+                // Track the default network, so quality defaults always use the
+                // current network type, even if it changed moments ago.
+                ConnectivityManager.NetworkCallback networkCallback = new ConnectivityManager.NetworkCallback() {
+                    @Override
+                    public void onCapabilitiesChanged(@NonNull Network network,
+                                                      @NonNull NetworkCapabilities capabilities) {
+                        try {
+                            final boolean isMobile = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR);
+                            final Boolean previous = currentNetworkIsMobile;
+                            if (previous != null && previous != isMobile) {
+                                Logger.printDebug(() -> "Network type changed to: "
+                                        + (isMobile ? "mobile" : "not mobile"));
+                                Utils.runOnMainThread(
+                                        RememberVideoQualityPatch::applyDefaultQualityAfterNetworkOrPlayerChange);
+                            }
+                            currentNetworkIsMobile = isMobile;
+                        } catch (Exception ex) {
+                            Logger.printException(() -> "Network capabilities change failure", ex);
+                        }
+                    }
+                };
+                connectivityManager.registerDefaultNetworkCallback(networkCallback);
+                networkManager = connectivityManager;
+
+                // If the network changed while the player was closed or hidden, the quality
+                // was never applied. Re-apply the default whenever the player becomes active.
+                PlayerType.getOnChange().addObserver((PlayerType type) -> {
+                    try {
+                        if (!type.isNoneOrHidden()) {
+                            Utils.runOnMainThread(
+                                    RememberVideoQualityPatch::applyDefaultQualityAfterNetworkOrPlayerChange);
+                        }
+                    } catch (Exception ex) {
+                        Logger.printException(() -> "Player type change failure", ex);
+                    }
+                    return Unit.INSTANCE;
+                });
+
+                Logger.printDebug(() -> "Registered network and player change hooks");
+            } catch (Exception ex) {
+                Logger.printException(() -> "Failed to register network and player change hooks", ex);
+            }
+        }
+    }
+
+    private static void applyDefaultQualityAfterNetworkOrPlayerChange() {
+        try {
+            if (!Settings.APPLY_DEFAULT_QUALITY_ON_NETWORK_CHANGE.get()) {
+                return;
+            }
+            if (ShortsPlayerState.isOpen()) {
+                return; // Shorts switching is not handled, because it would restart the Short.
+            }
+            PlayerType playerType = PlayerType.getCurrent();
+            if (playerType.isNoneOrHidden() || playerType == PlayerType.INLINE_MINIMAL) {
+                return; // No active video. The next video start applies the default quality.
+            }
+            if (VideoInformation.getPlayerResponseVideoId().isEmpty()) {
+                return; // No video loaded.
+            }
+
+            IntegerSetting preference = isMobileNetwork()
+                    ? videoQualityMobile
+                    : videoQualityWifi;
+            final int newDefaultQuality = preference.get();
+            if (newDefaultQuality == VideoInformation.getDesiredVideoResolution()) {
+                return; // Desired quality is already correct.
+            }
+
+            Logger.printDebug(() -> "Network or player changed, applying default quality: " + newDefaultQuality);
+            VideoInformation.setDesiredVideoResolution(newDefaultQuality);
+            VideoInformation.applyPreferredQualityToCurrentVideo();
+        } catch (Exception ex) {
+            Logger.printException(() -> "applyDefaultQualityAfterNetworkOrPlayerChange failure", ex);
+        }
     }
 }

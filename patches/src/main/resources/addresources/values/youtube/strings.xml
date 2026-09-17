@@ -1280,6 +1280,8 @@ Tap here to open DeArrow.ajay.app"</string>
     <string name="morphe_remember_video_quality_last_selected_toast_summary">Shows a notification when a new default quality is saved</string>
     <string name="morphe_video_quality_default_wifi_title">Default video quality on Wi-Fi network</string>
     <string name="morphe_video_quality_default_mobile_title">Default video quality on mobile network</string>
+    <string name="morphe_apply_default_quality_on_network_change_title">Change quality on network switch</string>
+    <string name="morphe_apply_default_quality_on_network_change_summary">When the network changes (Wi-Fi ↔ mobile data) during playback, switches the video to the default quality of the new network</string>
     <string name="morphe_remember_shorts_quality_last_selected_title">Remember Shorts quality</string>
     <string name="morphe_remember_shorts_quality_last_selected_summary">Applies your manual quality selection to all future Shorts</string>
     <string name="morphe_shorts_quality_default_wifi_title">Default Shorts quality on Wi-Fi network</string>

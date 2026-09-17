@@ -956,6 +956,14 @@ public final class VideoInformation {
         qualityNeedsUpdating = true;
     }
 
+    /**
+     * @return The desired video quality resolution,
+     * or {@link #AUTOMATIC_VIDEO_QUALITY_VALUE} if the automatic quality is desired.
+     */
+    public static int getDesiredVideoResolution() {
+        return desiredVideoResolution;
+    }
+
     private static void setCurrentQuality(@Nullable VideoQualityInterface quality) {
         Utils.verifyOnMainThread();
         if (currentQuality != quality) {
@@ -976,6 +984,75 @@ public final class VideoInformation {
             return;
         }
         currentQualityMenuInterface.patch_setQuality(quality);
+    }
+
+    /** Timestamp of the last quality change initiated by Morphe code (not the user). */
+    private static volatile long programmaticQualityChangeTime;
+
+    /**
+     * @return True if a programmatic (not user initiated) quality change happened very recently.
+     */
+    public static boolean programmaticQualityChangeRecently() {
+        return System.currentTimeMillis() - programmaticQualityChangeTime < 3000;
+    }
+
+    /**
+     * Applies the desired video quality (see: {@link #setDesiredVideoResolution(int)}) to the
+     * currently playing video, the same as if the user selected the quality in the player menu.
+     *
+     * @return True if the quality was applied (or is already in effect),
+     * false if it could not be applied.
+     */
+    public static boolean applyPreferredQualityToCurrentVideo() {
+        Utils.verifyOnMainThread();
+        try {
+            if (currentQualityMenuInterface == null || currentQualities == null) {
+                Logger.printDebug(() -> "Cannot apply preferred quality, menu or qualities not yet available");
+                return false;
+            }
+
+            final int preferredQuality = desiredVideoResolution;
+            VideoQualityInterface targetQuality = null;
+
+            // Qualities are ordered largest to smallest, with index 0 being the 'automatic' entry.
+            for (VideoQualityInterface quality : currentQualities) {
+                final int qualityResolution = quality.patch_getResolution();
+                if (qualityResolution == AUTOMATIC_VIDEO_QUALITY_VALUE) {
+                    if (preferredQuality == AUTOMATIC_VIDEO_QUALITY_VALUE) {
+                        targetQuality = quality;
+                        break;
+                    }
+                    continue;
+                }
+                if (preferredQuality != AUTOMATIC_VIDEO_QUALITY_VALUE
+                        && qualityResolution <= preferredQuality) {
+                    // Highest available quality equal to or less than the preferred quality.
+                    targetQuality = quality;
+                    break;
+                }
+            }
+
+            if (targetQuality == null) {
+                // Preferred quality is lower than all available. Use the lowest available quality.
+                targetQuality = currentQualities[currentQualities.length - 1];
+            }
+            final VideoQualityInterface target = targetQuality;
+
+            VideoQualityInterface currentQuality = getCurrentQuality();
+            if (currentQuality == target || (currentQuality != null
+                    && currentQuality.patch_getResolution() == target.patch_getResolution())) {
+                Logger.printDebug(() -> "Video is already the preferred quality: " + target);
+                return true;
+            }
+
+            Logger.printDebug(() -> "Applying preferred video quality: " + target);
+            programmaticQualityChangeTime = System.currentTimeMillis();
+            changeQuality(target);
+            return true;
+        } catch (Exception ex) {
+            Logger.printException(() -> "applyPreferredQualityToCurrentVideo failure", ex);
+            return false;
+        }
     }
 
     /**

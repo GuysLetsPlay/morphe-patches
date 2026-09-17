@@ -51,6 +51,7 @@ val rememberVideoQualityPatch = bytecodePatch {
                 entriesKey = "morphe_video_quality_default_entries",
                 entryValuesKey = "morphe_video_quality_default_entry_values"
             ),
+            SwitchPreference("morphe_apply_default_quality_on_network_change", summary = true),
             SwitchPreference("morphe_remember_video_quality_last_selected", summary = true),
 
             ListPreference(
