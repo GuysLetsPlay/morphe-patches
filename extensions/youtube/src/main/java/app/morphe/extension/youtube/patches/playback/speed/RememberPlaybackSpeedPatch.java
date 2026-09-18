@@ -164,19 +164,26 @@ public final class RememberPlaybackSpeedPatch {
                 if (ChannelWhitelist.isCurrentChannelWhitelisted(WhitelistType.PLAYBACK_SPEED)) {
                     Logger.printDebug(() -> "Overriding whitelisted channel video speed to 1.0x");
                     defaultSpeed = 1.0f;
-                } else if (DISABLE_PLAYBACK_SPEED_MUSIC) {
+                } else if (DISABLE_PLAYBACK_SPEED_MUSIC && !VideoInformation.lastPlayerResponseIsShort()) {
                     String videoId = VideoInformation.getVideoId();
-                    GetMixPlaylistRequest request = GetMixPlaylistRequest.getRequestForVideoId(videoId);
-                    final boolean isMusic = request != null && Boolean.TRUE.equals(request.getResult());
-                    if (isMusic) {
-                        Logger.printDebug(() -> "Overriding music video speed to 1.0x: " + videoId);
-                        defaultSpeed = 1.0f;
+                    if (!videoId.isEmpty()) {
+                        // The prefetch hook may not have started the request yet, which previously
+                        // caused the default speed to be applied first and then corrected to 1.0x
+                        // shortly after playback started. Start the request if needed and block
+                        // until it resolves, so the correct speed is applied from the start.
+                        GetMixPlaylistRequest request = GetMixPlaylistRequest.fetchRequestIfNeeded(
+                                videoId, Collections.emptyMap());
+                        final boolean isMusic = Boolean.TRUE.equals(request.getResult());
+                        if (isMusic) {
+                            Logger.printDebug(() -> "Overriding music video speed to 1.0x: " + videoId);
+                            defaultSpeed = 1.0f;
+                        }
                     }
                 }
-            }
 
-            if (defaultSpeed > 0) {
-                VideoInformation.changePlaybackSpeed(defaultSpeed);
+                if (defaultSpeed > 0) {
+                    VideoInformation.changePlaybackSpeed(defaultSpeed);
+                }
             }
         }
     }
@@ -198,15 +205,19 @@ public final class RememberPlaybackSpeedPatch {
                     Logger.printDebug(() -> "Overriding whitelisted channel audio pitch to 1.0x");
                     return 1.0f;
                 }
-                if (DISABLE_PLAYBACK_SPEED_MUSIC) {
+                if (DISABLE_PLAYBACK_SPEED_MUSIC && !VideoInformation.lastPlayerResponseIsShort()) {
                     String videoId = VideoInformation.getVideoId();
-
-                    // duplicate request, needs refactor along with getPlaybackSpeedOverride
-                    GetMixPlaylistRequest request = GetMixPlaylistRequest.getRequestForVideoId(videoId);
-                    final boolean isMusic = request != null && Boolean.TRUE.equals(request.getResult());
-                    if (isMusic) {
-                        Logger.printDebug(() -> "Overriding music audio pitch to 1.0x: " + videoId);
-                        return 1.0f;
+                    if (!videoId.isEmpty()) {
+                        // duplicate request, needs refactor along with getPlaybackSpeedOverride.
+                        // Self-heal like getPlaybackSpeedOverride: start the request if the
+                        // prefetch hook has not run yet, and block until it resolves.
+                        GetMixPlaylistRequest request = GetMixPlaylistRequest.fetchRequestIfNeeded(
+                                videoId, Collections.emptyMap());
+                        final boolean isMusic = Boolean.TRUE.equals(request.getResult());
+                        if (isMusic) {
+                            Logger.printDebug(() -> "Overriding music audio pitch to 1.0x: " + videoId);
+                            return 1.0f;
+                        }
                     }
                 }
             }
