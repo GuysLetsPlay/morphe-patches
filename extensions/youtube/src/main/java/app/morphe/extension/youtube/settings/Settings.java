@@ -46,6 +46,7 @@ import app.morphe.extension.youtube.patches.MiniplayerPatch.MiniplayerHorizontal
 import app.morphe.extension.youtube.patches.MiniplayerPatch.MiniplayerHorizontalDragPlaybackAvailability;
 import app.morphe.extension.youtube.patches.MiniplayerPatch.MiniplayerHorizontalRepositioningAvailability;
 import app.morphe.extension.youtube.patches.MiniplayerPatch.MiniplayerMinimalBar2Availability;
+import app.morphe.extension.youtube.patches.MiniplayerPatch.MiniplayerMusicOffscreenAvailability;
 import app.morphe.extension.youtube.patches.MiniplayerPatch.MiniplayerOverlayOpacityAvailability;
 import app.morphe.extension.youtube.patches.MiniplayerPatch.MiniplayerType;
 import app.morphe.extension.youtube.patches.OpenShortsInRegularPlayerPatch.ShortsPlayerType;
@@ -329,6 +330,7 @@ public class Settings extends SharedYouTubeSettings {
     public static final BooleanSetting MINIPLAYER_DISABLE_HORIZONTAL_DRAG = new BooleanSetting("morphe_miniplayer_disable_horizontal_drag", FALSE, true, new MiniplayerHorizontalDragAvailability());
     public static final BooleanSetting MINIPLAYER_DISABLE_HORIZONTAL_DRAG_PLAYBACK = new BooleanSetting("morphe_miniplayer_disable_horizontal_drag_playback", FALSE, true, new MiniplayerHorizontalDragPlaybackAvailability());
     public static final BooleanSetting MINIPLAYER_DISABLE_HORIZONTAL_REPOSITION = new BooleanSetting("morphe_miniplayer_disable_horizontal_reposition", FALSE, true, new MiniplayerHorizontalRepositioningAvailability());
+    public static final BooleanSetting MINIPLAYER_MUSIC_OFFSCREEN = new BooleanSetting("morphe_miniplayer_music_offscreen", FALSE, true, new MiniplayerMusicOffscreenAvailability());
     public static final BooleanSetting MINIPLAYER_DISABLE_ROUNDED_CORNERS = new BooleanSetting("morphe_miniplayer_disable_rounded_corners", FALSE, true, new MiniplayerAnyModernAvailability());
     public static final BooleanSetting MINIPLAYER_HIDE_TITLE = new BooleanSetting("morphe_miniplayer_hide_title", FALSE, true, new MiniplayerMinimalBar2Availability());
     public static final BooleanSetting MINIPLAYER_HIDE_OVERLAY_BUTTONS = new BooleanSetting("morphe_miniplayer_hide_overlay_buttons", FALSE, true, new MiniplayerHideOverlayButtonsAvailability());

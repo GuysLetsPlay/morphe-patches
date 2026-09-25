@@ -1161,6 +1161,8 @@ Limitation: If \'Restore old video action bar\' is turned off, \'More videos\' o
     <string name="morphe_miniplayer_disable_horizontal_drag_playback_summary">Playback will pause when the miniplayer is dragged off screen</string>
     <string name="morphe_miniplayer_disable_horizontal_reposition_title">Remember drag state position</string>
     <string name="morphe_miniplayer_disable_horizontal_reposition_summary">Dragging the miniplayer off-screen will preserve its UI state</string>
+    <string name="morphe_miniplayer_music_offscreen_title">Music videos: slide mini player to side</string>
+    <string name="morphe_miniplayer_music_offscreen_summary">Minimized music videos are automatically moved off-screen (only the side summon tab remains visible) so they don\'t distract while scrolling. Tap the tab to bring the video back</string>
     <string name="morphe_miniplayer_hide_overlay_buttons_title">Hide overlay buttons</string>
     <string name="morphe_miniplayer_width_dip_title">Default size</string>
     <string name="morphe_miniplayer_width_dip_summary">Set the starting on-screen size, in pixels</string>

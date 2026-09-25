@@ -28,6 +28,7 @@ import android.widget.ImageView;
 
 import androidx.annotation.Nullable;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -38,7 +39,11 @@ import app.morphe.extension.shared.Utils;
 import app.morphe.extension.shared.settings.Setting;
 import app.morphe.extension.shared.settings.preference.SeekBarPreference;
 import app.morphe.extension.shared.ui.Dim;
+import app.morphe.extension.youtube.patches.utils.requests.GetMixPlaylistRequest;
 import app.morphe.extension.youtube.settings.Settings;
+import app.morphe.extension.youtube.shared.PlayerType;
+
+import kotlin.Unit;
 
 @SuppressWarnings({"unused", "SpellCheckingInspection"})
 public final class MiniplayerPatch {
@@ -105,6 +110,26 @@ public final class MiniplayerPatch {
     private static boolean offScreenMiniplayerButtonPressed = false;
     private static int miniplayerOffscreenState = 0;
 
+    /**
+     * Feature: music videos minimized to the miniplayer are automatically docked offscreen
+     * (only the summon side tab remains visible), so they do not distract the user while
+     * scrolling. Non music videos are not modified.
+     */
+    private static final boolean MUSIC_OFFSCREEN_ENABLED = Settings.MINIPLAYER_MUSIC_OFFSCREEN.get();
+
+    /** Video id of the last prefetched music video status lookup. */
+    private static volatile String lastFetchedVideoId = "";
+
+    /**
+     * Set when the current minimized video is a music video and the miniplayer should be
+     * docked offscreen. Cleared when the user summons the miniplayer back using the side
+     * tab, or when the player leaves the minimized state.
+     */
+    private static volatile boolean musicOffscreenEngaged;
+
+    /** Cached offscreen bounds of the miniplayer, docked to the right edge of the screen. */
+    private static final Rect musicOffscreenBounds = new Rect();
+
     static {
         // YT appears to use the device screen dip width, plus an unknown fixed horizontal padding size.
         DisplayMetrics displayMetrics = Utils.getContext().getResources().getDisplayMetrics();
@@ -136,6 +161,19 @@ public final class MiniplayerPatch {
         }
 
         MINIPLAYER_SIZE = dipWidth;
+
+        if (MUSIC_OFFSCREEN_ENABLED) {
+            // Engage the forced offscreen state whenever a music video is minimized,
+            // and always clear the state when the player leaves the minimized state.
+            PlayerType.getOnChange().addObserver(type -> {
+                if (type == PlayerType.WATCH_WHILE_MINIMIZED) {
+                    checkAndEngageMusicOffscreen();
+                } else {
+                    musicOffscreenEngaged = false;
+                }
+                return Unit.INSTANCE;
+            });
+        }
     }
 
     private static final MiniplayerType CURRENT_TYPE = Settings.MINIPLAYER_TYPE.get();
@@ -240,6 +278,26 @@ public final class MiniplayerPatch {
     public static final class MiniplayerHorizontalRepositioningAvailability implements Setting.Availability {
         @Override
         public boolean isAvailable() {
+            return isDraggableMiniplayer()
+                    && !Settings.MINIPLAYER_DISABLE_DRAG_AND_DROP.get()
+                    && !Settings.MINIPLAYER_DISABLE_HORIZONTAL_DRAG.get();
+        }
+
+        @Override
+        public List<Setting<?>> getParentSettings() {
+            return List.of(
+                    Settings.MINIPLAYER_TYPE,
+                    Settings.MINIPLAYER_DISABLE_DRAG_AND_DROP,
+                    Settings.MINIPLAYER_DISABLE_HORIZONTAL_DRAG
+            );
+        }
+    }
+
+    public static final class MiniplayerMusicOffscreenAvailability implements Setting.Availability {
+        @Override
+        public boolean isAvailable() {
+            // The offscreen docking behavior relies on the horizontal drag gesture
+            // and the side summon tab of the draggable miniplayer types.
             return isDraggableMiniplayer()
                     && !Settings.MINIPLAYER_DISABLE_DRAG_AND_DROP.get()
                     && !Settings.MINIPLAYER_DISABLE_HORIZONTAL_DRAG.get();
@@ -461,11 +519,93 @@ public final class MiniplayerPatch {
     }
 
     /**
+     * Check if the current video is a music video (same detection as the playback speed
+     * patch uses), and if so engage docking the miniplayer offscreen while it is minimized.
+     */
+    private static void checkAndEngageMusicOffscreen() {
+        if (musicOffscreenEngaged) {
+            return; // Already engaged from the current minimized session.
+        }
+        try {
+            final String videoId = VideoInformation.getVideoId();
+            if (videoId.isEmpty()) {
+                return;
+            }
+            GetMixPlaylistRequest request = GetMixPlaylistRequest.getRequestForVideoId(videoId);
+            if (request == null) {
+                // Prefetch did not trigger yet. Should not happen since the video id
+                // is prefetched when playback starts, but handle it anyway.
+                request = GetMixPlaylistRequest.fetchRequestIfNeeded(videoId, Collections.emptyMap());
+            }
+            final Boolean isMusicVideo = request.getResult();
+            if (isMusicVideo == null || !isMusicVideo) {
+                return;
+            }
+            Logger.printDebug(() -> "Minimized music video: " + videoId
+                    + " docking miniplayer offscreen");
+            musicOffscreenEngaged = true;
+        } catch (Exception ex) {
+            Logger.printException(() -> "checkAndEngageMusicOffscreen failure", ex);
+        }
+    }
+
+    /**
+     * Injection point.
+     * <p>
+     * Runs after the minimal miniplayer bounds handling, for every miniplayer bounds change.
+     * While engaged (a music video was minimized with the feature enabled), the bounds are
+     * forced offscreen so the miniplayer instantly docks to the side of the screen with only
+     * the summon tab left visible, to avoid distracting the user while scrolling.
+     */
+    public static Rect getMusicVideoMiniplayerBounds(int left, int top, int right, int bottom) {
+        if (musicOffscreenEngaged) {
+            // Retrieve display metrics at runtime to ensure correct calculations for foldable devices.
+            DisplayMetrics displayMetrics = Utils.getContext().getResources().getDisplayMetrics();
+            final int screenWidth = displayMetrics.widthPixels;
+            final int width = right - left;
+
+            // Dock the miniplayer just offscreen at the right edge of the screen, preserving
+            // the vertical position (same offsets YT uses when the user swipes it offscreen).
+            musicOffscreenBounds.set(screenWidth, top, screenWidth + width, bottom);
+            return musicOffscreenBounds;
+        }
+
+        // Reuse the field, as this is called for every bounds change.
+        musicOffscreenBounds.set(left, top, right, bottom);
+        return musicOffscreenBounds;
+    }
+
+    /**
+     * Injection point.
+     */
+    public static void preloadMusicVideoFetch(String videoId, boolean isShortAndOpeningOrPlaying) {
+        if (MUSIC_OFFSCREEN_ENABLED && !VideoInformation.lastPlayerResponseIsShort() &&
+                !lastFetchedVideoId.equals(videoId)) {
+            Logger.printDebug(() -> "Prefetching music video status: " + videoId);
+            lastFetchedVideoId = videoId;
+            GetMixPlaylistRequest request = GetMixPlaylistRequest.fetchRequestIfNeeded(
+                    videoId, Collections.emptyMap());
+            // Block here (this hook is always called off the main thread), so the music
+            // status is ready by the time the user might minimize the video.
+            request.getResult();
+        }
+    }
+
+    /**
      * Injection point.
      * Check if the button to show the miniplayer from offscreen is pressed and skip
      * the code to change the miniplayer param offsets to prevent repositioning.
      */
     public static void enableOffScreenMiniplayerButtonPressed(MotionEvent motionEvent) {
+        if (musicOffscreenEngaged &&
+                motionEvent.getAction() == MotionEvent.ACTION_UP &&
+                motionEvent.getEventTime() - motionEvent.getDownTime() < 200) {
+            // The user tapped the summon tab of the offscreen music miniplayer.
+            // Stop forcing the miniplayer offscreen, so YT can show it again.
+            Logger.printDebug(() -> "Offscreen music miniplayer summon tab pressed");
+            musicOffscreenEngaged = false;
+        }
+
         if (!Settings.MINIPLAYER_DISABLE_HORIZONTAL_REPOSITION.get()) {
             return;
         }

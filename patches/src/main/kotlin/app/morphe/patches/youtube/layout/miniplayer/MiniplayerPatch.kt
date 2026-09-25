@@ -38,6 +38,8 @@ import app.morphe.patches.youtube.misc.playservice.versionCheckPatch
 import app.morphe.patches.youtube.misc.settings.PreferenceScreen
 import app.morphe.patches.youtube.misc.settings.settingsPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
+import app.morphe.patches.youtube.video.videoid.hookPlayerResponseVideoId
+import app.morphe.patches.youtube.video.videoid.videoIdPatch
 import app.morphe.util.addInstructionsAtControlFlowLabel
 import app.morphe.util.cloneParameters
 import app.morphe.util.findFreeRegister
@@ -73,7 +75,8 @@ val miniplayerPatch = bytecodePatch(
     dependsOn(
         sharedExtensionPatch,
         settingsPatch,
-        versionCheckPatch
+        versionCheckPatch,
+        videoIdPatch
     )
 
     compatibleWith(COMPATIBILITY_YOUTUBE)
@@ -120,6 +123,7 @@ val miniplayerPatch = bytecodePatch(
         }
         preferences += SwitchPreference("morphe_miniplayer_disable_horizontal_drag_playback", summary = true)
         preferences += SwitchPreference("morphe_miniplayer_disable_horizontal_reposition", summary = true)
+        preferences += SwitchPreference("morphe_miniplayer_music_offscreen", summary = true)
 
         PreferenceScreen.PLAYER.addPreferences(
             PreferenceScreenPreference(
@@ -657,6 +661,25 @@ val miniplayerPatch = bytecodePatch(
                 iget p4, v0, Landroid/graphics/Rect;->bottom:I
             """
         )
+
+        // Music video offscreen docking. Added at the head of the method so it runs
+        // before the minimal miniplayer bounds handling above (which passes the values
+        // through unchanged for the draggable miniplayer types used with this feature).
+        MiniplayerOffscreenHandlerFingerprint.method.addInstructions(
+            0,
+            """
+                invoke-static { p1, p2, p3, p4 }, $EXTENSION_CLASS->getMusicVideoMiniplayerBounds(IIII)Landroid/graphics/Rect;
+                move-result-object v0
+                iget p1, v0, Landroid/graphics/Rect;->left:I
+                iget p2, v0, Landroid/graphics/Rect;->top:I
+                iget p3, v0, Landroid/graphics/Rect;->right:I
+                iget p4, v0, Landroid/graphics/Rect;->bottom:I
+            """
+        )
+
+        // Prefetch the music video status of the current video, used to determine
+        // if the miniplayer should be docked offscreen when the video is minimized.
+        hookPlayerResponseVideoId("$EXTENSION_CLASS->preloadMusicVideoFetch(Ljava/lang/String;Z)V")
 
         // endregion
     }
