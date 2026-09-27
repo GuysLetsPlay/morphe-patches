@@ -389,45 +389,27 @@ val miniplayerPatch = bytecodePatch(
             )
         }
 
-        MiniplayerOffscreenHandlerFingerprint.let { fingerprint ->
-            fingerprint.method.apply {
-                val index = fingerprint.instructionMatches.last().index
+        // Prefetch the music video status of the current video, used to determine
+        // if the miniplayer should be docked offscreen when the video is minimized.
+        hookPlayerResponseVideoId("$EXTENSION_CLASS->preloadMusicVideoFetch(Ljava/lang/String;Z)V")
+
+        MiniplayerOffscreenHandlerFingerprint.let {
+            it.method.apply {
+                val index = it.instructionMatches.last().index
                 val free = findFreeRegister(index)
 
-                // The flag that enables the edge docking calculations is read from the settings
-                // holder immediately after the new bounds are stored, and it is a value that is
-                // looked up only once, when the miniplayer is created.
-                // Force it open while a music video is docked, so the untouched code always
-                // calculates the docked rect and updates the internal edge the miniplayer is
-                // docked to, instead of the extension only moving the bounds offscreen.
-                // Added here and not after the patch below, as the patch below is inserted at a
-                // lower instruction index and adding this first keeps both indexes valid.
-                //
-                // Only patched if the read of the flag directly follows the storing of the bounds
-                // and is immediately followed by the branch that gates the docking calculations,
-                // as newer versions may look the flag up somewhere else or inline it.
-                val instructions = implementation!!.instructions
-                var flagIndex = -1
-                for (i in index + 1..minOf(index + 4, instructions.lastIndex - 1)) {
-                    if (instructions[i].opcode != Opcode.IGET_BOOLEAN) continue
-                    val followingOpcode = instructions[i + 1].opcode
-                    if (followingOpcode == Opcode.IF_EQZ || followingOpcode == Opcode.IF_NEZ) {
-                        flagIndex = i
-                        break
-                    }
-                }
-
-                if (flagIndex >= 0) {
-                    val flagRegister = getInstruction<TwoRegisterInstruction>(flagIndex).registerA
-
-                    addInstructions(
-                        flagIndex + 1,
-                        """
-                            invoke-static { v$flagRegister }, $EXTENSION_CLASS->forceNativeEdgeDock(Z)Z
-                            move-result v$flagRegister
-                        """
-                    )
-                }
+                // Music video offscreen docking: Check if music video should go offscreen
+                addInstructions(
+                    0,
+                    """
+                        invoke-static { p1, p2, p3, p4 }, $EXTENSION_CLASS->getMusicVideoMiniplayerBounds(IIII)Landroid/graphics/Rect;
+                        move-result-object v0
+                        iget p1, v0, Landroid/graphics/Rect;->left:I
+                        iget p2, v0, Landroid/graphics/Rect;->top:I
+                        iget p3, v0, Landroid/graphics/Rect;->right:I
+                        iget p4, v0, Landroid/graphics/Rect;->bottom:I
+                    """
+                )
 
                 addInstructionsWithLabels(
                     index + 1,
@@ -702,25 +684,6 @@ val miniplayerPatch = bytecodePatch(
                 iget p4, v0, Landroid/graphics/Rect;->bottom:I
             """
         )
-
-        // Music video offscreen docking. Added at the head of the method so it runs
-        // before the minimal miniplayer bounds handling above (which passes the values
-        // through unchanged for the draggable miniplayer types used with this feature).
-        MiniplayerOffscreenHandlerFingerprint.method.addInstructions(
-            0,
-            """
-                invoke-static { p1, p2, p3, p4 }, $EXTENSION_CLASS->getMusicVideoMiniplayerBounds(IIII)Landroid/graphics/Rect;
-                move-result-object v0
-                iget p1, v0, Landroid/graphics/Rect;->left:I
-                iget p2, v0, Landroid/graphics/Rect;->top:I
-                iget p3, v0, Landroid/graphics/Rect;->right:I
-                iget p4, v0, Landroid/graphics/Rect;->bottom:I
-            """
-        )
-
-        // Prefetch the music video status of the current video, used to determine
-        // if the miniplayer should be docked offscreen when the video is minimized.
-        hookPlayerResponseVideoId("$EXTENSION_CLASS->preloadMusicVideoFetch(Ljava/lang/String;Z)V")
 
         // endregion
     }

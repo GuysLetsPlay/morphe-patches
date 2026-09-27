@@ -495,77 +495,27 @@ public final class MiniplayerPatch {
 
     /**
      * Injection point.
-     * <p>
-     * Also used to set the value of the horizontal drag feature flag, which is the gate that
-     * enables the internal edge docking calculations. While a music video is docked the flag must
-     * be on, otherwise the untouched YouTube code never calculates the docked rect and never
-     * updates the internal docked state.
      */
     public static boolean getHorizontalDrag(boolean original) {
         if (CURRENT_TYPE == DEFAULT) {
             return original;
         }
 
-        return MINIPLAYER_HORIZONTAL_DRAG_ENABLED || forceNativeEdgeDock();
+        return MINIPLAYER_HORIZONTAL_DRAG_ENABLED;
     }
 
     /**
      * Injection point.
-     * <p>
-     * Returned value is inverted, as the patched code uses it to skip the YouTube edge docking
-     * calculations. While a music video is docked, those calculations must run, as they are what
-     * sets the internal docked state and the docked rect of the miniplayer.
      */
     public static boolean getHorizontalDrag() {
-        return !(MINIPLAYER_HORIZONTAL_DRAG_ENABLED || forceNativeEdgeDock());
+        return !MINIPLAYER_HORIZONTAL_DRAG_ENABLED;
     }
 
     /**
      * Injection point.
-     * <p>
-     * When a music video is docked offscreen, the animation end handler must run to set the
-     * internal docked state (which makes the visible pill appear), but the audio must not pause.
-     * This returns false while music-docked, so onAnimationEnd runs, and the pause is blocked
-     * at the consumer level instead.
      */
     public static boolean pausePlaybackWithHorizontalDrag() {
-        return (MINIPLAYER_HORIZONTAL_DRAG_ENABLED && !Settings.MINIPLAYER_DISABLE_HORIZONTAL_DRAG_PLAYBACK.get())
-                && !forceNativeEdgeDock();
-    }
-
-    /**
-     * Check if playback should be paused when the miniplayer becomes docked.
-     * <p>
-     * This is called by the consumer of the docked state stream, and returns false when
-     * a music video is docked offscreen, preventing the pause while still allowing the
-     * docked state to be set (which makes the visible pill appear).
-     */
-    public static boolean shouldPauseWhenDocked() {
-        return !forceNativeEdgeDock();
-    }
-
-    /**
-     * Check if the internal YouTube edge docking machinery must be left running, because the
-     * miniplayer of a minimized music video is being docked to the edge of the screen.
-     * <p>
-     * Feeding the miniplayer bounds past the right docking limit makes the untouched YouTube code
-     * calculate the docked rect and set the internal docked state on its own, which is what the
-     * offscreen music miniplayer is presenting to the user.
-     */
-    private static boolean forceNativeEdgeDock() {
-        return MUSIC_OFFSCREEN_ENABLED && musicOffscreenEngaged;
-    }
-
-    /**
-     * Injection point.
-     * <p>
-     * The flag that gates the edge docking calculations is read once, when the miniplayer is
-     * created, and that value is kept for the lifetime of the miniplayer. This ORs the value of
-     * the flag with the state of the docked music video, so the docking calculations run on every
-     * bounds change while a music video is docked, no matter what the flag was set to.
-     */
-    public static boolean forceNativeEdgeDock(boolean original) {
-        return original || forceNativeEdgeDock();
+        return MINIPLAYER_HORIZONTAL_DRAG_ENABLED && !Settings.MINIPLAYER_DISABLE_HORIZONTAL_DRAG_PLAYBACK.get();
     }
 
     /**
@@ -603,24 +553,23 @@ public final class MiniplayerPatch {
      * Injection point.
      * <p>
      * Runs after the minimal miniplayer bounds handling, for every miniplayer bounds change.
-     * While engaged (a music video was minimized with the feature enabled), the bounds are
-     * forced offscreen so the miniplayer instantly docks to the side of the screen with only
-     * the summon tab left visible, to avoid distracting the user while scrolling.
+     * While engaged (a music video was minimized with the feature enabled), trigger the
+     * offscreen state so the miniplayer disappears to the side using the existing working code.
      */
     public static Rect getMusicVideoMiniplayerBounds(int left, int top, int right, int bottom) {
-        if (musicOffscreenEngaged) {
-            // Retrieve display metrics at runtime to ensure correct calculations for foldable devices.
+        if (musicOffscreenEngaged && miniplayerOffscreenState == 0) {
+            // Trigger the offscreen state when music video is first minimized
             DisplayMetrics displayMetrics = Utils.getContext().getResources().getDisplayMetrics();
             final int screenWidth = displayMetrics.widthPixels;
             final int width = right - left;
-
-            // Dock the miniplayer just offscreen at the right edge of the screen, preserving
-            // the vertical position (same offsets YT uses when the user swipes it offscreen).
-            musicOffscreenBounds.set(screenWidth, top, screenWidth + width, bottom);
-            return musicOffscreenBounds;
+            
+            // Set the offscreen state to right side
+            miniplayerOffscreenState = 2;
+            Logger.printDebug(() -> "Music video engaged offscreen state to right side");
         }
 
-        // Reuse the field, as this is called for every bounds change.
+        // Pass through the bounds unchanged - the existing blockOffscreenMiniplayerHorizontalReposition
+        // will handle the actual offscreen positioning
         musicOffscreenBounds.set(left, top, right, bottom);
         return musicOffscreenBounds;
     }
@@ -654,9 +603,10 @@ public final class MiniplayerPatch {
             // Stop forcing the miniplayer offscreen, so YT can show it again.
             Logger.printDebug(() -> "Offscreen music miniplayer summon tab pressed");
             musicOffscreenEngaged = false;
+            miniplayerOffscreenState = 0; // Also reset the offscreen state
         }
 
-        if (!Settings.MINIPLAYER_DISABLE_HORIZONTAL_REPOSITION.get()) {
+        if (!Settings.MINIPLAYER_DISABLE_HORIZONTAL_REPOSITION.get() && !musicOffscreenEngaged) {
             return;
         }
 
@@ -678,7 +628,8 @@ public final class MiniplayerPatch {
      * offscreen, in order to prevent miniplayer from being shown itself during the user's navigation across the app.
      */
     public static Rect blockOffscreenMiniplayerHorizontalReposition(Rect currentRect, Rect previousRect) {
-        if (MINIMAL_BAR_SELECTED || !Settings.MINIPLAYER_DISABLE_HORIZONTAL_REPOSITION.get()) {
+        // Use the same offscreen behavior for music videos when the feature is enabled
+        if (MINIMAL_BAR_SELECTED || (!Settings.MINIPLAYER_DISABLE_HORIZONTAL_REPOSITION.get() && !musicOffscreenEngaged)) {
             miniplayerOffscreenState = 0;
             return currentRect;
         }
