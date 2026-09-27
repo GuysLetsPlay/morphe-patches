@@ -207,6 +207,24 @@ internal object MiniplayerOffscreenRectValidatorFingerprint : Fingerprint (
     )
 )
 
+/**
+ * Matches the method that calculates the docked offscreen position of the miniplayer, and
+ * updates the internal edge the miniplayer is docked to (right, inside, or left).
+ *
+ * Smali of the untouched method, with the field names of the analyzed build:
+ * ```
+ * i.set(left, top, right, bottom)
+ * if (!dragAndDropFlag) return;                   // feature flag 45658112, [Lpgu;->o]
+ * dockedEdge = centerX() > maxWidth ? RIGHT       // [Lphb;->h] = 1
+ *         : centerX() >= 0 ? INSIDE               //               = 2
+ *         : LEFT;                                 //               = 3
+ * if (dockedEdge == LEFT) { dockedRect.setEmpty(); return; }
+ * progress = 1 - constrain(2 * distancePastEdge / (width / 9), 0, 1)
+ * dockedRect.set(i.left - dockSize * progress, ...)   // [Lpgt;->j], exposed by kR()
+ * ```
+ * The extension feeds bounds with the left edge past the docking limit, which makes this method
+ * calculate the docked rect and set the docked edge without any patching of its own.
+ */
 internal object MiniplayerOffscreenHandlerFingerprint : Fingerprint(
     classFingerprint = MiniplayerRectDragFieldsNameFingerprint,
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),

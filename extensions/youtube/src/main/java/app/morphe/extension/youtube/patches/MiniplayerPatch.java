@@ -495,27 +495,77 @@ public final class MiniplayerPatch {
 
     /**
      * Injection point.
-     */
-    public static boolean getHorizontalDrag() {
-        return !MINIPLAYER_HORIZONTAL_DRAG_ENABLED;
-    }
-
-    /**
-     * Injection point.
+     * <p>
+     * Also used to set the value of the horizontal drag feature flag, which is the gate that
+     * enables the internal edge docking calculations. While a music video is docked the flag must
+     * be on, otherwise the untouched YouTube code never calculates the docked rect and never
+     * updates the internal docked state.
      */
     public static boolean getHorizontalDrag(boolean original) {
         if (CURRENT_TYPE == DEFAULT) {
             return original;
         }
 
-        return MINIPLAYER_HORIZONTAL_DRAG_ENABLED;
+        return MINIPLAYER_HORIZONTAL_DRAG_ENABLED || forceNativeEdgeDock();
     }
 
     /**
      * Injection point.
+     * <p>
+     * Returned value is inverted, as the patched code uses it to skip the YouTube edge docking
+     * calculations. While a music video is docked, those calculations must run, as they are what
+     * sets the internal docked state and the docked rect of the miniplayer.
+     */
+    public static boolean getHorizontalDrag() {
+        return !(MINIPLAYER_HORIZONTAL_DRAG_ENABLED || forceNativeEdgeDock());
+    }
+
+    /**
+     * Injection point.
+     * <p>
+     * When a music video is docked offscreen, the animation end handler must run to set the
+     * internal docked state (which makes the visible pill appear), but the audio must not pause.
+     * This returns false while music-docked, so onAnimationEnd runs, and the pause is blocked
+     * at the consumer level instead.
      */
     public static boolean pausePlaybackWithHorizontalDrag() {
-        return MINIPLAYER_HORIZONTAL_DRAG_ENABLED && !Settings.MINIPLAYER_DISABLE_HORIZONTAL_DRAG_PLAYBACK.get();
+        return (MINIPLAYER_HORIZONTAL_DRAG_ENABLED && !Settings.MINIPLAYER_DISABLE_HORIZONTAL_DRAG_PLAYBACK.get())
+                && !forceNativeEdgeDock();
+    }
+
+    /**
+     * Check if playback should be paused when the miniplayer becomes docked.
+     * <p>
+     * This is called by the consumer of the docked state stream, and returns false when
+     * a music video is docked offscreen, preventing the pause while still allowing the
+     * docked state to be set (which makes the visible pill appear).
+     */
+    public static boolean shouldPauseWhenDocked() {
+        return !forceNativeEdgeDock();
+    }
+
+    /**
+     * Check if the internal YouTube edge docking machinery must be left running, because the
+     * miniplayer of a minimized music video is being docked to the edge of the screen.
+     * <p>
+     * Feeding the miniplayer bounds past the right docking limit makes the untouched YouTube code
+     * calculate the docked rect and set the internal docked state on its own, which is what the
+     * offscreen music miniplayer is presenting to the user.
+     */
+    private static boolean forceNativeEdgeDock() {
+        return MUSIC_OFFSCREEN_ENABLED && musicOffscreenEngaged;
+    }
+
+    /**
+     * Injection point.
+     * <p>
+     * The flag that gates the edge docking calculations is read once, when the miniplayer is
+     * created, and that value is kept for the lifetime of the miniplayer. This ORs the value of
+     * the flag with the state of the docked music video, so the docking calculations run on every
+     * bounds change while a music video is docked, no matter what the flag was set to.
+     */
+    public static boolean forceNativeEdgeDock(boolean original) {
+        return original || forceNativeEdgeDock();
     }
 
     /**

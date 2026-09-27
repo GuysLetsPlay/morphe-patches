@@ -389,10 +389,45 @@ val miniplayerPatch = bytecodePatch(
             )
         }
 
-        MiniplayerOffscreenHandlerFingerprint.let {
-            it.method.apply {
-                val index = it.instructionMatches.last().index
+        MiniplayerOffscreenHandlerFingerprint.let { fingerprint ->
+            fingerprint.method.apply {
+                val index = fingerprint.instructionMatches.last().index
                 val free = findFreeRegister(index)
+
+                // The flag that enables the edge docking calculations is read from the settings
+                // holder immediately after the new bounds are stored, and it is a value that is
+                // looked up only once, when the miniplayer is created.
+                // Force it open while a music video is docked, so the untouched code always
+                // calculates the docked rect and updates the internal edge the miniplayer is
+                // docked to, instead of the extension only moving the bounds offscreen.
+                // Added here and not after the patch below, as the patch below is inserted at a
+                // lower instruction index and adding this first keeps both indexes valid.
+                //
+                // Only patched if the read of the flag directly follows the storing of the bounds
+                // and is immediately followed by the branch that gates the docking calculations,
+                // as newer versions may look the flag up somewhere else or inline it.
+                val instructions = implementation!!.instructions
+                var flagIndex = -1
+                for (i in index + 1..minOf(index + 4, instructions.lastIndex - 1)) {
+                    if (instructions[i].opcode != Opcode.IGET_BOOLEAN) continue
+                    val followingOpcode = instructions[i + 1].opcode
+                    if (followingOpcode == Opcode.IF_EQZ || followingOpcode == Opcode.IF_NEZ) {
+                        flagIndex = i
+                        break
+                    }
+                }
+
+                if (flagIndex >= 0) {
+                    val flagRegister = getInstruction<TwoRegisterInstruction>(flagIndex).registerA
+
+                    addInstructions(
+                        flagIndex + 1,
+                        """
+                            invoke-static { v$flagRegister }, $EXTENSION_CLASS->forceNativeEdgeDock(Z)Z
+                            move-result v$flagRegister
+                        """
+                    )
+                }
 
                 addInstructionsWithLabels(
                     index + 1,
@@ -435,6 +470,12 @@ val miniplayerPatch = bytecodePatch(
             }
         }
 
+        // The animation end handler of the miniplayer is what sets the internal docked state:
+        // it calls the state holder with the result of checking if the center of the miniplayer
+        // is outside the docking limits, and the state is then published to the UI
+        // (stock YT pauses playback when the miniplayer becomes docked).
+        // Skipping it keeps the audio playing while the miniplayer is dragged offscreen, and
+        // also keeps the internal docked state untouched.
         Fingerprint(
             definingClass = MiniplayerHorizontalDragPlaybackFingerprint.instructionMatches[2]
                 .getMethodCalled().definingClass,
