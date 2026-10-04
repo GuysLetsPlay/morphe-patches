@@ -145,14 +145,23 @@ public final class ChannelSearchPatch {
             ImageView originalIcon = searchButtonViewRef.get();
             boolean visible = Settings.CHANNEL_SEARCH.get() && isChannelId(currentBrowseId);
 
+            ViewGroup toolbar = originalParent != null
+                    && originalParent.getParent() instanceof ViewGroup parent ? parent : null;
+
             if (button != null) {
                 button.setVisibility(visible ? View.VISIBLE : View.GONE);
-                if (button.getParent() != null) {
+                if (button.getParent() == toolbar) {
                     return;
                 }
+                // YouTube can replace the toolbar while retaining the old menu item tree.
+                // A button still attached to that detached tree must not block insertion into
+                // the current toolbar.
+                if (button.getParent() instanceof ViewGroup oldParent) {
+                    oldParent.removeView(button);
+                }
+                channelSearchButtonRef = new WeakReference<>(null);
             }
-            if (!visible || originalParent == null || originalIcon == null
-                    || !(originalParent.getParent() instanceof ViewGroup toolbar)) {
+            if (!visible || originalParent == null || originalIcon == null || toolbar == null) {
                 return;
             }
 
