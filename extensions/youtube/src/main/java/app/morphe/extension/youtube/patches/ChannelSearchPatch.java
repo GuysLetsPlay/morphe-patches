@@ -133,6 +133,9 @@ public final class ChannelSearchPatch {
             return false;
         });
         updateChannelSearchButton();
+        // YouTube can report the item container before attaching it to the toolbar. Retry after
+        // the current menu/layout pass so the adjacent button has a parent to insert into.
+        parentView.post(ChannelSearchPatch::updateChannelSearchButton);
     }
 
     private static void updateChannelSearchButton() {
