@@ -18,6 +18,8 @@ import app.morphe.patches.all.misc.resources.addResourcesPatch
 import app.morphe.patches.shared.misc.settings.preference.SwitchPreference
 import app.morphe.patches.youtube.misc.settings.PreferenceScreen
 import app.morphe.patches.youtube.misc.settings.settingsPatch
+import app.morphe.patches.youtube.misc.toolbar.hookToolBar
+import app.morphe.patches.youtube.misc.toolbar.toolBarHookPatch
 import app.morphe.patches.youtube.shared.Constants.COMPATIBILITY_YOUTUBE
 import app.morphe.patches.youtube.shared.YouTubeActivityOnCreateFingerprint
 import app.morphe.util.findFreeRegister
@@ -34,20 +36,24 @@ private const val EXTENSION_CLASS = "Lapp/morphe/extension/youtube/patches/Chann
 @Suppress("unused")
 val channelSearchPatch = bytecodePatch(
     name = "Channel search",
-    description = "Adds an option to search inside the channel that is currently open " +
-            "instead of searching all of YouTube.",
+    description = "Adds a separate search button for the channel that is currently open, " +
+            "while keeping the original search button global.",
 ) {
     compatibleWith(COMPATIBILITY_YOUTUBE)
 
     dependsOn(
         addResourcesPatch,
-        settingsPatch
+        settingsPatch,
+        toolBarHookPatch
     )
 
     execute {
         PreferenceScreen.GENERAL.addPreferences(
             SwitchPreference("morphe_channel_search", summary = true)
         )
+
+        // Add a dedicated channel-search button beside YouTube's existing global search button.
+        hookToolBar("$EXTENSION_CLASS->setSearchButtonView")
 
         // Activity is used as the context of the result dialog.
         YouTubeActivityOnCreateFingerprint.method.addInstruction(

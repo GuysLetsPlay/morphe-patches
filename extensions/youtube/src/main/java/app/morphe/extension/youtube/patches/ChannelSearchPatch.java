@@ -15,13 +15,16 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Outline;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -77,6 +80,13 @@ public final class ChannelSearchPatch {
      */
     private static String currentBrowseId = "";
 
+    /** Set only by the added channel-search button, so the original button remains global. */
+    private static volatile boolean channelSearchArmed;
+
+    private static WeakReference<View> searchButtonParentRef = new WeakReference<>(null);
+    private static WeakReference<ImageView> searchButtonViewRef = new WeakReference<>(null);
+    private static WeakReference<View> channelSearchButtonRef = new WeakReference<>(null);
+
     private static String lastQuery = "";
     private static long lastQueryTime;
 
@@ -92,6 +102,8 @@ public final class ChannelSearchPatch {
      */
     public static void setBrowseId(@Nullable String browseId) {
         currentBrowseId = browseId == null ? "" : browseId;
+        channelSearchArmed = false;
+        updateChannelSearchButton();
     }
 
     /**
@@ -101,6 +113,101 @@ public final class ChannelSearchPatch {
      */
     public static void clearBrowseId() {
         currentBrowseId = "";
+        channelSearchArmed = false;
+        updateChannelSearchButton();
+    }
+
+    /** Injection point. Adds a second toolbar button alongside YouTube's global search button. */
+    public static void setSearchButtonView(String enumName, View parentView, ImageView imageView) {
+        if (!"SEARCH".equals(enumName) && !"SEARCH_BOLD".equals(enumName)
+                && !"SEARCH_CAIRO".equals(enumName)) {
+            return;
+        }
+
+        searchButtonParentRef = new WeakReference<>(parentView);
+        searchButtonViewRef = new WeakReference<>(imageView);
+        parentView.setOnTouchListener((view, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                channelSearchArmed = false;
+            }
+            return false;
+        });
+        updateChannelSearchButton();
+    }
+
+    private static void updateChannelSearchButton() {
+        try {
+            View button = channelSearchButtonRef.get();
+            View originalParent = searchButtonParentRef.get();
+            ImageView originalIcon = searchButtonViewRef.get();
+            boolean visible = Settings.CHANNEL_SEARCH.get() && isChannelId(currentBrowseId);
+
+            if (button != null) {
+                button.setVisibility(visible ? View.VISIBLE : View.GONE);
+                if (button.getParent() != null) {
+                    return;
+                }
+            }
+            if (!visible || originalParent == null || originalIcon == null
+                    || !(originalParent.getParent() instanceof ViewGroup toolbar)) {
+                return;
+            }
+
+            ViewGroup.LayoutParams originalParams = originalParent.getLayoutParams();
+            ViewGroup.LayoutParams buttonParams = copyLayoutParams(toolbar, originalParams);
+            FrameLayout channelButton = new FrameLayout(originalParent.getContext());
+            channelButton.setLayoutParams(buttonParams);
+            channelButton.setContentDescription("Search in channel");
+            channelButton.setFocusable(true);
+            channelButton.setClickable(true);
+
+            ImageView icon = new ImageView(originalParent.getContext());
+            Drawable originalDrawable = originalIcon.getDrawable();
+            if (originalDrawable != null) {
+                Drawable.ConstantState state = originalDrawable.getConstantState();
+                icon.setImageDrawable(state == null
+                        ? originalDrawable.mutate()
+                        : state.newDrawable(originalParent.getResources()).mutate());
+            }
+            icon.setScaleType(originalIcon.getScaleType());
+            FrameLayout.LayoutParams iconParams = new FrameLayout.LayoutParams(
+                    originalIcon.getLayoutParams() == null
+                            ? Dim.dp24 : originalIcon.getLayoutParams().width,
+                    originalIcon.getLayoutParams() == null
+                            ? Dim.dp24 : originalIcon.getLayoutParams().height,
+                    Gravity.CENTER);
+            channelButton.addView(icon, iconParams);
+            channelButton.setOnClickListener(view -> {
+                channelSearchArmed = true;
+                ImageView searchButton = searchButtonViewRef.get();
+                if (searchButton != null) {
+                    searchButton.callOnClick();
+                }
+            });
+
+            int index = toolbar.indexOfChild(originalParent);
+            toolbar.addView(channelButton, index < 0 ? toolbar.getChildCount() : index + 1);
+            channelSearchButtonRef = new WeakReference<>(channelButton);
+        } catch (Exception ex) {
+            Logger.printException(() -> "updateChannelSearchButton failure", ex);
+        }
+    }
+
+    private static ViewGroup.LayoutParams copyLayoutParams(
+            ViewGroup parent, ViewGroup.LayoutParams original) {
+        if (original == null) {
+            return new ViewGroup.LayoutParams(Dim.dp48, Dim.dp48);
+        }
+        if (parent instanceof LinearLayout && original instanceof LinearLayout.LayoutParams linear) {
+            return new LinearLayout.LayoutParams(linear);
+        }
+        if (parent instanceof FrameLayout && original instanceof FrameLayout.LayoutParams frame) {
+            return new FrameLayout.LayoutParams(frame);
+        }
+        if (original instanceof ViewGroup.MarginLayoutParams margins) {
+            return new ViewGroup.MarginLayoutParams(margins);
+        }
+        return new ViewGroup.LayoutParams(original);
     }
 
     /**
@@ -110,10 +217,12 @@ public final class ChannelSearchPatch {
      */
     public static boolean searchInChannel(@Nullable String query) {
         try {
-            if (!Settings.CHANNEL_SEARCH.get() || query == null || query.isEmpty()) {
+            if (!channelSearchArmed || !Settings.CHANNEL_SEARCH.get()
+                    || query == null || query.isEmpty()) {
                 return false;
             }
 
+            channelSearchArmed = false;
             final String channelId = currentBrowseId;
             if (!isChannelId(channelId)) {
                 return false;
