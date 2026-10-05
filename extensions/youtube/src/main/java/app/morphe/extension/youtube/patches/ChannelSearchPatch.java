@@ -156,13 +156,25 @@ public final class ChannelSearchPatch {
             View toolbarItem = originalParent;
             ViewGroup toolbar = null;
             if (originalParent != null) {
-                // The toolbar hook gets ImageView.getParent(), but YouTube nests that view in
-                // menu_item_N before the real toolbar. Find the direct toolbar child so the new
-                // button is laid out beside the original menu item rather than over it.
+                // Search actions are nested in menu_item_N children inside a separate action
+                // row. Insert alongside that item, rather than in the wider outer toolbar where
+                // title width and other channel controls change the apparent button position.
                 int toolbarId = originalParent.getResources().getIdentifier(
                         "toolbar", "id", originalParent.getContext().getPackageName());
                 View current = originalParent;
                 while (current.getParent() instanceof ViewGroup parent) {
+                    if (current.getId() != View.NO_ID) {
+                        try {
+                            String entryName = current.getResources().getResourceEntryName(current.getId());
+                            if (entryName.startsWith("menu_item_")) {
+                                toolbar = parent;
+                                toolbarItem = current;
+                                break;
+                            }
+                        } catch (Exception ignored) {
+                            // Keep walking until the toolbar or its action row is found.
+                        }
+                    }
                     if (toolbarId != 0 && parent.getId() == toolbarId) {
                         toolbar = parent;
                         toolbarItem = current;
@@ -189,8 +201,7 @@ public final class ChannelSearchPatch {
                 return;
             }
 
-            // The toolbar hook receives the ImageView's immediate parent. YouTube nests that
-            // inside a menu_item_N container, which is the actual direct child of the toolbar.
+            // Preserve the original action item's layout while keeping the added icon's slot fixed.
             ViewGroup.LayoutParams originalParams = toolbarItem.getLayoutParams();
             ViewGroup.LayoutParams buttonParams = copyLayoutParams(toolbar, originalParams);
             if (buttonParams instanceof LinearLayout.LayoutParams linearParams) {
