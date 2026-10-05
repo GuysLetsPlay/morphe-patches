@@ -69,6 +69,7 @@ if (-not (Test-Path -LiteralPath $java -PathType Leaf)) { $java = "java" }
 
 & $java -Xmx5g -jar $MorpheDesktop patch `
     --patches $mpp `
+    --force `
     --enable 'Clone app' --options=packageName=$packageName `
     --enable 'Custom branding' --options='customName=YouTube Channel Test' `
     --enable 'Channel search' `
@@ -81,11 +82,14 @@ $buildResult = Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
 if ($buildResult.PSObject.Properties.Name -contains "failed" -and $buildResult.failed -gt 0) {
     throw "Morphe Desktop reported $($buildResult.failed) failed patches."
 }
+if (@($buildResult.appliedPatches | ForEach-Object { $_.name }) -notcontains "Channel search") {
+    throw "The APK was not patched: Morphe Desktop did not apply Channel search. See $result"
+}
 if (-not (Test-Path -LiteralPath $apk -PathType Leaf)) { throw "APK output was not created." }
 
 $devices = @(adb devices | Select-String "\tdevice$")
 if ($devices.Count -eq 0) { throw "No ADB device is connected." }
-adb install -r $apk
+adb install -r -d $apk
 if ($LASTEXITCODE -ne 0) { throw "Could not install the test APK." }
 adb shell monkey -p $packageName 1 | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "APK installed, but Android could not launch the test app." }
