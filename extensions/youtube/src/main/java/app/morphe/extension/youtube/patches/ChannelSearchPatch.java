@@ -193,6 +193,12 @@ public final class ChannelSearchPatch {
             // inside a menu_item_N container, which is the actual direct child of the toolbar.
             ViewGroup.LayoutParams originalParams = toolbarItem.getLayoutParams();
             ViewGroup.LayoutParams buttonParams = copyLayoutParams(toolbar, originalParams);
+            if (buttonParams instanceof LinearLayout.LayoutParams linearParams) {
+                // Search menu items can have a weighted width that changes as the available
+                // toolbar actions change between channels. Keep the extra icon in a fixed slot.
+                linearParams.width = Dim.dp48;
+                linearParams.weight = 0;
+            }
             FrameLayout channelButton = new FrameLayout(toolbarItem.getContext());
             channelButton.setLayoutParams(buttonParams);
             channelButton.setContentDescription("Search in channel");
@@ -209,15 +215,12 @@ public final class ChannelSearchPatch {
             }
             icon.setScaleType(originalIcon.getScaleType());
             FrameLayout.LayoutParams iconParams = new FrameLayout.LayoutParams(
-                    originalIcon.getLayoutParams() == null
-                            ? Dim.dp24 : originalIcon.getLayoutParams().width,
-                    originalIcon.getLayoutParams() == null
-                            ? Dim.dp24 : originalIcon.getLayoutParams().height,
+                    Dim.dp24,
+                    Dim.dp24,
                     Gravity.CENTER);
             channelButton.addView(icon, iconParams);
             channelButton.setOnClickListener(view -> {
                 pendingChannelSearchBrowseId = currentBrowseId;
-                Logger.printDebug(() -> "Channel-search button selected " + currentBrowseId);
                 ImageView searchButton = searchButtonViewRef.get();
                 if (searchButton != null) {
                     searchButton.callOnClick();
@@ -258,8 +261,6 @@ public final class ChannelSearchPatch {
     public static boolean searchInChannel(@Nullable String query) {
         try {
             String channelId = pendingChannelSearchBrowseId;
-            Logger.printDebug(() -> "Search submit; pending channel=" + channelId
-                    + ", current browse=" + currentBrowseId + ", query=" + query);
             if (channelId.isEmpty() || !Settings.CHANNEL_SEARCH.get()
                     || query == null || query.isEmpty()) {
                 return false;
