@@ -101,8 +101,14 @@ public final class ChannelSearchPatch {
      * Injection point.
      */
     public static void setBrowseId(@Nullable String browseId) {
-        currentBrowseId = browseId == null ? "" : browseId;
-        pendingChannelSearchBrowseId = "";
+        String nextBrowseId = browseId == null ? "" : browseId;
+        // YouTube can report a temporary non-channel browse id while transitioning from a
+        // channel to search. Keep the channel selected by the dedicated button until submit.
+        // A genuinely different channel page invalidates a stale selection.
+        if (isChannelId(nextBrowseId) && !nextBrowseId.equals(currentBrowseId)) {
+            pendingChannelSearchBrowseId = "";
+        }
+        currentBrowseId = nextBrowseId;
         updateChannelSearchButton();
     }
 
@@ -211,6 +217,7 @@ public final class ChannelSearchPatch {
             channelButton.addView(icon, iconParams);
             channelButton.setOnClickListener(view -> {
                 pendingChannelSearchBrowseId = currentBrowseId;
+                Logger.printDebug(() -> "Channel-search button selected " + currentBrowseId);
                 ImageView searchButton = searchButtonViewRef.get();
                 if (searchButton != null) {
                     searchButton.callOnClick();
@@ -251,6 +258,8 @@ public final class ChannelSearchPatch {
     public static boolean searchInChannel(@Nullable String query) {
         try {
             String channelId = pendingChannelSearchBrowseId;
+            Logger.printDebug(() -> "Search submit; pending channel=" + channelId
+                    + ", current browse=" + currentBrowseId + ", query=" + query);
             if (channelId.isEmpty() || !Settings.CHANNEL_SEARCH.get()
                     || query == null || query.isEmpty()) {
                 return false;
