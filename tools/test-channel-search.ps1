@@ -54,10 +54,12 @@ $mppFiles = @(Get-ChildItem -LiteralPath $runDir -Filter *.mpp -File -Recurse)
 if ($mppFiles.Count -gt 0) {
     $mpp = $mppFiles[0].FullName
 } else {
-    $payload = Get-ChildItem -LiteralPath $runDir -Recurse -File
-    if ($payload.Count -eq 0) { throw "Run $runId did not contain build artifacts." }
+    $bundleDir = Get-ChildItem -LiteralPath $runDir -Directory -Filter *.mpp | Select-Object -First 1
+    if (-not $bundleDir) { throw "Run $runId did not contain a Morphe bundle." }
     $mpp = Join-Path $runDir "channel-search.mpp"
-    Compress-Archive -Path (Join-Path $runDir "*") -DestinationPath $mpp -Force
+    $zip = Join-Path $runDir "channel-search.zip"
+    Compress-Archive -Path (Join-Path $bundleDir.FullName "*") -DestinationPath $zip -Force
+    Move-Item -LiteralPath $zip -Destination $mpp -Force
 }
 
 $apk = Join-Path $runDir "youtube-channel-search-test-clone.apk"
