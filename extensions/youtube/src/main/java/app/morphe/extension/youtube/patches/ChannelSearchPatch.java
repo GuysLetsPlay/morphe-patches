@@ -145,29 +145,47 @@ public final class ChannelSearchPatch {
             ImageView originalIcon = searchButtonViewRef.get();
             boolean visible = Settings.CHANNEL_SEARCH.get() && isChannelId(currentBrowseId);
 
-            ViewGroup toolbar = originalParent != null
-                    && originalParent.getParent() instanceof ViewGroup parent ? parent : null;
+            View toolbarItem = originalParent;
+            ViewGroup toolbar = null;
+            if (originalParent != null) {
+                // The toolbar hook gets ImageView.getParent(), but YouTube nests that view in
+                // menu_item_N before the real toolbar. Find the direct toolbar child so the new
+                // button is laid out beside the original menu item rather than over it.
+                int toolbarId = originalParent.getResources().getIdentifier(
+                        "toolbar", "id", originalParent.getContext().getPackageName());
+                View current = originalParent;
+                while (current.getParent() instanceof ViewGroup parent) {
+                    if (toolbarId != 0 && parent.getId() == toolbarId) {
+                        toolbar = parent;
+                        toolbarItem = current;
+                        break;
+                    }
+                    current = parent;
+                }
+            }
 
             if (button != null) {
                 button.setVisibility(visible ? View.VISIBLE : View.GONE);
                 if (button.getParent() == toolbar) {
                     return;
                 }
-                // YouTube can replace the toolbar while retaining the old menu item tree.
-                // A button still attached to that detached tree must not block insertion into
-                // the current toolbar.
+                // YouTube can replace the toolbar while retaining the old menu item tree. A
+                // button still attached to that old tree must not block insertion into the new one.
                 if (button.getParent() instanceof ViewGroup oldParent) {
                     oldParent.removeView(button);
                 }
                 channelSearchButtonRef = new WeakReference<>(null);
             }
-            if (!visible || originalParent == null || originalIcon == null || toolbar == null) {
+            if (!visible || originalParent == null || originalIcon == null
+                    || toolbar == null || toolbarItem == null) {
                 return;
             }
 
-            ViewGroup.LayoutParams originalParams = originalParent.getLayoutParams();
+            // The toolbar hook receives the ImageView's immediate parent. YouTube nests that
+            // inside a menu_item_N container, which is the actual direct child of the toolbar.
+            ViewGroup.LayoutParams originalParams = toolbarItem.getLayoutParams();
             ViewGroup.LayoutParams buttonParams = copyLayoutParams(toolbar, originalParams);
-            FrameLayout channelButton = new FrameLayout(originalParent.getContext());
+            FrameLayout channelButton = new FrameLayout(toolbarItem.getContext());
             channelButton.setLayoutParams(buttonParams);
             channelButton.setContentDescription("Search in channel");
             channelButton.setFocusable(true);
@@ -197,7 +215,7 @@ public final class ChannelSearchPatch {
                 }
             });
 
-            int index = toolbar.indexOfChild(originalParent);
+            int index = toolbar.indexOfChild(toolbarItem);
             toolbar.addView(channelButton, index < 0 ? toolbar.getChildCount() : index + 1);
             channelSearchButtonRef = new WeakReference<>(channelButton);
         } catch (Exception ex) {
