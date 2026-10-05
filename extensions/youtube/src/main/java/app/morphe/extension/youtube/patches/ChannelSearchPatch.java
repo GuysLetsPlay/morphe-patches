@@ -236,7 +236,7 @@ public final class ChannelSearchPatch {
             TextView channelBadge = new TextView(toolbarItem.getContext());
             channelBadge.setText("+");
             channelBadge.setTextColor(ThemeUtils.getAppBackgroundColor());
-            channelBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            channelBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
             channelBadge.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             channelBadge.setGravity(Gravity.CENTER);
             channelBadge.setIncludeFontPadding(false);
@@ -245,8 +245,8 @@ public final class ChannelSearchPatch {
             badgeBackground.setColor(ThemeUtils.getAppForegroundColor());
             channelBadge.setBackground(badgeBackground);
             FrameLayout.LayoutParams badgeParams = new FrameLayout.LayoutParams(
-                    Dim.dp14, Dim.dp14, Gravity.END | Gravity.BOTTOM);
-            badgeParams.setMargins(0, 0, Dim.dp7, Dim.dp7);
+                    Dim.dp12, Dim.dp12, Gravity.END | Gravity.BOTTOM);
+            badgeParams.setMargins(0, 0, Dim.dp8, Dim.dp8);
             channelButton.addView(channelBadge, badgeParams);
             channelButton.setOnClickListener(view -> {
                 pendingChannelSearchBrowseId = currentBrowseId;
