@@ -15,19 +15,26 @@ import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
 import android.graphics.Outline;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.ShapeDrawable;
 import android.graphics.drawable.shapes.RoundRectShape;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.Menu;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.ImageView;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ScrollView;
@@ -153,6 +160,13 @@ public final class ChannelSearchPatch {
      */
     private static String currentBrowseId = "";
 
+    /** Browse id selected by the dedicated channel-search button, retained during navigation. */
+    private static volatile String pendingChannelSearchBrowseId = "";
+
+    private static WeakReference<View> searchButtonParentRef = new WeakReference<>(null);
+    private static WeakReference<ImageView> searchButtonViewRef = new WeakReference<>(null);
+    private static WeakReference<View> channelSearchButtonRef = new WeakReference<>(null);
+
     private static String lastQuery = "";
     private static long lastQueryTime;
 
@@ -161,7 +175,12 @@ public final class ChannelSearchPatch {
      * Called on main thread.
      */
     public static void setBrowseId(@Nullable String browseId) {
-        currentBrowseId = browseId == null ? "" : browseId;
+        String nextBrowseId = browseId == null ? "" : browseId;
+        if (isChannelId(nextBrowseId) && !nextBrowseId.equals(currentBrowseId)) {
+            pendingChannelSearchBrowseId = "";
+        }
+        currentBrowseId = nextBrowseId;
+        updateChannelSearchButton();
     }
 
     /**
@@ -170,6 +189,160 @@ public final class ChannelSearchPatch {
      */
     public static void clearBrowseId() {
         currentBrowseId = "";
+        // Keep the dedicated button's channel selection through the transition to search.
+        updateChannelSearchButton();
+    }
+
+    /** Injection point. Adds a separate, channel-scoped button beside YouTube's global search. */
+    public static void setSearchButtonView(String enumName, View parentView, ImageView imageView) {
+        if (!"SEARCH".equals(enumName) && !"SEARCH_BOLD".equals(enumName)
+                && !"SEARCH_CAIRO".equals(enumName)) {
+            return;
+        }
+        searchButtonParentRef = new WeakReference<>(parentView);
+        searchButtonViewRef = new WeakReference<>(imageView);
+        parentView.setOnTouchListener((view, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                // Touching YouTube's original search action always means global search.
+                pendingChannelSearchBrowseId = "";
+            }
+            return false;
+        });
+        updateChannelSearchButton();
+        parentView.post(ChannelSearchPatch::updateChannelSearchButton);
+    }
+
+    private static void updateChannelSearchButton() {
+        try {
+            View button = channelSearchButtonRef.get();
+            View originalParent = searchButtonParentRef.get();
+            ImageView originalIcon = searchButtonViewRef.get();
+            boolean visible = Settings.CHANNEL_SEARCH.get() && isChannelId(currentBrowseId);
+
+            View toolbarItem = originalParent;
+            ViewGroup toolbar = null;
+            if (originalParent != null) {
+                int toolbarId = originalParent.getResources().getIdentifier(
+                        "toolbar", "id", originalParent.getContext().getPackageName());
+                View current = originalParent;
+                while (current.getParent() instanceof ViewGroup parent) {
+                    if (current.getId() != View.NO_ID) {
+                        try {
+                            String entryName = current.getResources().getResourceEntryName(current.getId());
+                            if (entryName.startsWith("menu_item_")) {
+                                toolbar = parent;
+                                toolbarItem = current;
+                                break;
+                            }
+                        } catch (Exception ignored) {
+                            // Continue toward the toolbar's action row.
+                        }
+                    }
+                    if (toolbarId != 0 && parent.getId() == toolbarId) {
+                        toolbar = parent;
+                        toolbarItem = current;
+                        break;
+                    }
+                    current = parent;
+                }
+            }
+
+            if (button != null) {
+                button.setVisibility(visible ? View.VISIBLE : View.GONE);
+                if (button.getParent() == toolbar) return;
+                if (button.getParent() instanceof ViewGroup oldParent) oldParent.removeView(button);
+                channelSearchButtonRef = new WeakReference<>(null);
+            }
+            if (!visible || originalParent == null || originalIcon == null
+                    || toolbar == null || toolbarItem == null) return;
+
+            ViewGroup.LayoutParams buttonParams = copyLayoutParams(toolbar, toolbarItem.getLayoutParams());
+            if (buttonParams instanceof LinearLayout.LayoutParams linearParams) {
+                linearParams.width = Dim.dp48;
+                linearParams.weight = 0;
+            }
+            FrameLayout channelButton = new FrameLayout(toolbarItem.getContext());
+            channelButton.setLayoutParams(buttonParams);
+            channelButton.setContentDescription("Search in channel");
+            channelButton.setFocusable(true);
+            channelButton.setClickable(true);
+
+            ImageView icon = new ImageView(originalParent.getContext());
+            icon.setImageDrawable(new ChannelSearchIconDrawable(
+                    ThemeUtils.getAppForegroundColor(), ThemeUtils.getAppBackgroundColor()));
+            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            channelButton.addView(icon, new FrameLayout.LayoutParams(Dim.dp24, Dim.dp24, Gravity.CENTER));
+            channelButton.setOnClickListener(view -> {
+                pendingChannelSearchBrowseId = currentBrowseId;
+                ImageView searchButton = searchButtonViewRef.get();
+                if (searchButton != null) searchButton.callOnClick();
+            });
+
+            int index = toolbar.indexOfChild(toolbarItem);
+            toolbar.addView(channelButton, index < 0 ? 0 : index);
+            channelSearchButtonRef = new WeakReference<>(channelButton);
+        } catch (Exception ex) {
+            Logger.printException(() -> "updateChannelSearchButton failure", ex);
+        }
+    }
+
+    /** Single custom-drawn magnifier-plus glyph for channel-scoped search. */
+    private static final class ChannelSearchIconDrawable extends Drawable {
+        private static final float VIEWPORT_SIZE = 24f;
+        private final Paint lensPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint handlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint plusPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        ChannelSearchIconDrawable(int foregroundColor, int backgroundColor) {
+            lensPaint.setColor(foregroundColor);
+            lensPaint.setStyle(Paint.Style.FILL);
+            handlePaint.setColor(foregroundColor);
+            handlePaint.setStyle(Paint.Style.STROKE);
+            handlePaint.setStrokeWidth(2.4f);
+            handlePaint.setStrokeCap(Paint.Cap.ROUND);
+            plusPaint.setColor(backgroundColor);
+            plusPaint.setStyle(Paint.Style.STROKE);
+            plusPaint.setStrokeWidth(1.8f);
+            plusPaint.setStrokeCap(Paint.Cap.ROUND);
+        }
+
+        @Override public void draw(Canvas canvas) {
+            android.graphics.Rect bounds = getBounds();
+            if (bounds.isEmpty()) return;
+            int saveCount = canvas.save();
+            canvas.translate(bounds.left, bounds.top);
+            canvas.scale(bounds.width() / VIEWPORT_SIZE, bounds.height() / VIEWPORT_SIZE);
+            canvas.drawLine(15.1f, 15.1f, 21f, 21f, handlePaint);
+            canvas.drawCircle(10f, 10f, 7.2f, lensPaint);
+            canvas.drawLine(7.5f, 10f, 12.5f, 10f, plusPaint);
+            canvas.drawLine(10f, 7.5f, 10f, 12.5f, plusPaint);
+            canvas.restoreToCount(saveCount);
+        }
+
+        @Override public void setAlpha(int alpha) {
+            lensPaint.setAlpha(alpha); handlePaint.setAlpha(alpha); plusPaint.setAlpha(alpha); invalidateSelf();
+        }
+        @Override public void setColorFilter(@Nullable ColorFilter colorFilter) {
+            lensPaint.setColorFilter(colorFilter); handlePaint.setColorFilter(colorFilter);
+            plusPaint.setColorFilter(colorFilter); invalidateSelf();
+        }
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+        @Override public int getIntrinsicWidth() { return Dim.dp24; }
+        @Override public int getIntrinsicHeight() { return Dim.dp24; }
+    }
+
+    private static ViewGroup.LayoutParams copyLayoutParams(ViewGroup parent, ViewGroup.LayoutParams original) {
+        if (original == null) return new ViewGroup.LayoutParams(Dim.dp48, Dim.dp48);
+        if (parent instanceof LinearLayout && original instanceof LinearLayout.LayoutParams linear) {
+            return new LinearLayout.LayoutParams(linear);
+        }
+        if (parent instanceof FrameLayout && original instanceof FrameLayout.LayoutParams frame) {
+            return new FrameLayout.LayoutParams(frame);
+        }
+        if (original instanceof ViewGroup.MarginLayoutParams margins) {
+            return new ViewGroup.MarginLayoutParams(margins);
+        }
+        return new ViewGroup.LayoutParams(original);
     }
 
     /**
@@ -282,7 +455,8 @@ public final class ChannelSearchPatch {
                 return false;
             }
 
-            String channelId = currentBrowseId;
+            String channelId = pendingChannelSearchBrowseId;
+            pendingChannelSearchBrowseId = "";
             if (!isChannelId(channelId)) {
                 return false;
             }
