@@ -57,15 +57,19 @@ if ($mppFiles.Count -gt 0) {
     $bundleDir = Get-ChildItem -LiteralPath $runDir -Directory -Filter *.mpp | Select-Object -First 1
     if (-not $bundleDir) { throw "Run $runId did not contain a Morphe bundle." }
     $mpp = Join-Path $runDir "channel-search.mpp"
-    $zip = Join-Path $runDir "channel-search.zip"
-    Compress-Archive -Path (Join-Path $bundleDir.FullName "*") -DestinationPath $zip -Force
-    Move-Item -LiteralPath $zip -Destination $mpp -Force
+    $zipCode = "import os,sys,zipfile; src,dst=sys.argv[1:]; z=zipfile.ZipFile(dst,'w',compression=zipfile.ZIP_DEFLATED); [z.write(os.path.join(root,name),os.path.relpath(os.path.join(root,name),src).replace(os.sep,'/')) for root,dirs,files in os.walk(src) for name in files]; z.close()"
+    & python -c $zipCode $bundleDir.FullName $mpp
+    if ($LASTEXITCODE -ne 0) { throw "Could not package the GitHub Actions MPP bundle." }
 }
 
 $apk = Join-Path $runDir "youtube-channel-search-test-clone.apk"
 $result = Join-Path $runDir "patch-result-clone.json"
 $java = "C:\Program Files\Android\Android Studio\jbr\bin\java.exe"
 if (-not (Test-Path -LiteralPath $java -PathType Leaf)) { $java = "java" }
+$availablePatches = (& $java -jar $MorpheDesktop list-patches --patches $mpp --with-descriptions=false 2>&1 | Out-String)
+if ($LASTEXITCODE -ne 0 -or $availablePatches -notmatch "Channel search") {
+    throw "Morphe Desktop could not load the Channel search patch from $mpp."
+}
 
 & $java -Xmx5g -jar $MorpheDesktop patch `
     --patches $mpp `
