@@ -13,10 +13,13 @@ import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
 import android.graphics.Outline;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -218,36 +221,14 @@ public final class ChannelSearchPatch {
             channelButton.setClickable(true);
 
             ImageView icon = new ImageView(originalParent.getContext());
-            Drawable originalDrawable = originalIcon.getDrawable();
-            if (originalDrawable != null) {
-                Drawable.ConstantState state = originalDrawable.getConstantState();
-                icon.setImageDrawable(state == null
-                        ? originalDrawable.mutate()
-                        : state.newDrawable(originalParent.getResources()).mutate());
-            }
-            icon.setScaleType(originalIcon.getScaleType());
+            icon.setImageDrawable(new ChannelSearchIconDrawable(
+                    ThemeUtils.getAppForegroundColor(), ThemeUtils.getAppBackgroundColor()));
+            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
             FrameLayout.LayoutParams iconParams = new FrameLayout.LayoutParams(
                     Dim.dp24,
                     Dim.dp24,
                     Gravity.CENTER);
             channelButton.addView(icon, iconParams);
-
-            // A small plus badge distinguishes this channel-scoped action from global search.
-            TextView channelBadge = new TextView(toolbarItem.getContext());
-            channelBadge.setText("+");
-            channelBadge.setTextColor(ThemeUtils.getAppBackgroundColor());
-            channelBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
-            channelBadge.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-            channelBadge.setGravity(Gravity.CENTER);
-            channelBadge.setIncludeFontPadding(false);
-            GradientDrawable badgeBackground = new GradientDrawable();
-            badgeBackground.setShape(GradientDrawable.OVAL);
-            badgeBackground.setColor(ThemeUtils.getAppForegroundColor());
-            channelBadge.setBackground(badgeBackground);
-            FrameLayout.LayoutParams badgeParams = new FrameLayout.LayoutParams(
-                    Dim.dp12, Dim.dp12, Gravity.END | Gravity.BOTTOM);
-            badgeParams.setMargins(0, 0, Dim.dp8, Dim.dp8);
-            channelButton.addView(channelBadge, badgeParams);
             channelButton.setOnClickListener(view -> {
                 pendingChannelSearchBrowseId = currentBrowseId;
                 ImageView searchButton = searchButtonViewRef.get();
@@ -262,6 +243,81 @@ public final class ChannelSearchPatch {
             channelSearchButtonRef = new WeakReference<>(channelButton);
         } catch (Exception ex) {
             Logger.printException(() -> "updateChannelSearchButton failure", ex);
+        }
+    }
+
+    /** Single, density-independent glyph for channel-scoped search. */
+    private static final class ChannelSearchIconDrawable extends Drawable {
+        private static final float VIEWPORT_SIZE = 24f;
+
+        private final Paint lensPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint handlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint plusPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        ChannelSearchIconDrawable(int foregroundColor, int backgroundColor) {
+            lensPaint.setColor(foregroundColor);
+            lensPaint.setStyle(Paint.Style.FILL);
+
+            handlePaint.setColor(foregroundColor);
+            handlePaint.setStyle(Paint.Style.STROKE);
+            handlePaint.setStrokeWidth(2.4f);
+            handlePaint.setStrokeCap(Paint.Cap.ROUND);
+
+            plusPaint.setColor(backgroundColor);
+            plusPaint.setStyle(Paint.Style.STROKE);
+            plusPaint.setStrokeWidth(1.8f);
+            plusPaint.setStrokeCap(Paint.Cap.ROUND);
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            android.graphics.Rect bounds = getBounds();
+            if (bounds.isEmpty()) {
+                return;
+            }
+
+            int saveCount = canvas.save();
+            canvas.translate(bounds.left, bounds.top);
+            canvas.scale(bounds.width() / VIEWPORT_SIZE, bounds.height() / VIEWPORT_SIZE);
+
+            // Draw the handle first so the solid lens cleanly covers its join.
+            canvas.drawLine(15.1f, 15.1f, 21.0f, 21.0f, handlePaint);
+            canvas.drawCircle(10.0f, 10.0f, 7.2f, lensPaint);
+            canvas.drawLine(7.5f, 10.0f, 12.5f, 10.0f, plusPaint);
+            canvas.drawLine(10.0f, 7.5f, 10.0f, 12.5f, plusPaint);
+
+            canvas.restoreToCount(saveCount);
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+            lensPaint.setAlpha(alpha);
+            handlePaint.setAlpha(alpha);
+            plusPaint.setAlpha(alpha);
+            invalidateSelf();
+        }
+
+        @Override
+        public void setColorFilter(@Nullable ColorFilter colorFilter) {
+            lensPaint.setColorFilter(colorFilter);
+            handlePaint.setColorFilter(colorFilter);
+            plusPaint.setColorFilter(colorFilter);
+            invalidateSelf();
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
+
+        @Override
+        public int getIntrinsicWidth() {
+            return Dim.dp24;
+        }
+
+        @Override
+        public int getIntrinsicHeight() {
+            return Dim.dp24;
         }
     }
 
