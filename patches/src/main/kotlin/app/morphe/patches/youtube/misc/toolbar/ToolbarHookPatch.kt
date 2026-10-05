@@ -14,9 +14,7 @@ import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
 import app.morphe.patches.youtube.misc.extension.sharedExtensionPatch
 import app.morphe.patches.youtube.shared.ToolBarButtonFingerprint
 import app.morphe.util.addInstructionsAtControlFlowLabel
-import app.morphe.util.findFreeRegister
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
-import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import java.lang.ref.WeakReference
 
 internal const val EXTENSION_CLASS = "Lapp/morphe/extension/youtube/patches/ToolBarPatch;"
@@ -38,16 +36,17 @@ val toolBarHookPatch = bytecodePatch(
                 val enumRegister = getInstruction<OneRegisterInstruction>(enumIndex).registerA
 
                 val imageViewIndex = it.instructionMatches[6].index
-                val imageViewReference = getInstruction<ReferenceInstruction>(imageViewIndex).reference
+                val imageViewRegister = getInstruction<OneRegisterInstruction>(imageViewIndex).registerA
 
-                val insertIndex = enumIndex + 1
-                val freeRegister = findFreeRegister(insertIndex, enumRegister)
+                // Reuse the register YouTube just loaded with the ImageView. Allocating a
+                // temporary based only on liveness at the enum instruction can overwrite a
+                // value that YouTube uses later in this method on newer versions.
+                val insertIndex = imageViewIndex + 1
 
                 addInstructionsAtControlFlowLabel(
                     insertIndex,
                     """
-                        iget-object v$freeRegister, p0, $imageViewReference
-                        invoke-static { v$enumRegister, v$freeRegister }, $EXTENSION_CLASS->hookToolBar(Ljava/lang/Enum;Landroid/widget/ImageView;)V
+                        invoke-static { v$enumRegister, v$imageViewRegister }, $EXTENSION_CLASS->hookToolBar(Ljava/lang/Enum;Landroid/widget/ImageView;)V
                     """
                 )
             }
