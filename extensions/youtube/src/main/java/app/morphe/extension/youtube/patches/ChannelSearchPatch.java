@@ -16,6 +16,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Outline;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -230,6 +231,23 @@ public final class ChannelSearchPatch {
                     Dim.dp24,
                     Gravity.CENTER);
             channelButton.addView(icon, iconParams);
+
+            // A small plus badge distinguishes this channel-scoped action from global search.
+            TextView channelBadge = new TextView(toolbarItem.getContext());
+            channelBadge.setText("+");
+            channelBadge.setTextColor(ThemeUtils.getAppBackgroundColor());
+            channelBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            channelBadge.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            channelBadge.setGravity(Gravity.CENTER);
+            channelBadge.setIncludeFontPadding(false);
+            GradientDrawable badgeBackground = new GradientDrawable();
+            badgeBackground.setShape(GradientDrawable.OVAL);
+            badgeBackground.setColor(ThemeUtils.getAppForegroundColor());
+            channelBadge.setBackground(badgeBackground);
+            FrameLayout.LayoutParams badgeParams = new FrameLayout.LayoutParams(
+                    Dim.dp14, Dim.dp14, Gravity.END | Gravity.BOTTOM);
+            badgeParams.setMargins(0, 0, Dim.dp7, Dim.dp7);
+            channelButton.addView(channelBadge, badgeParams);
             channelButton.setOnClickListener(view -> {
                 pendingChannelSearchBrowseId = currentBrowseId;
                 ImageView searchButton = searchButtonViewRef.get();
