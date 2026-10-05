@@ -80,8 +80,8 @@ public final class ChannelSearchPatch {
      */
     private static String currentBrowseId = "";
 
-    /** Set only by the added channel-search button, so the original button remains global. */
-    private static volatile boolean channelSearchArmed;
+    /** Kept through YouTube's transition from a channel page to the search screen. */
+    private static volatile String pendingChannelSearchBrowseId = "";
 
     private static WeakReference<View> searchButtonParentRef = new WeakReference<>(null);
     private static WeakReference<ImageView> searchButtonViewRef = new WeakReference<>(null);
@@ -102,7 +102,7 @@ public final class ChannelSearchPatch {
      */
     public static void setBrowseId(@Nullable String browseId) {
         currentBrowseId = browseId == null ? "" : browseId;
-        channelSearchArmed = false;
+        pendingChannelSearchBrowseId = "";
         updateChannelSearchButton();
     }
 
@@ -113,7 +113,8 @@ public final class ChannelSearchPatch {
      */
     public static void clearBrowseId() {
         currentBrowseId = "";
-        channelSearchArmed = false;
+        // A channel-search click opens YouTube's search screen, whose creation clears the
+        // current browse id. Keep the pending channel id until the user submits the query.
         updateChannelSearchButton();
     }
 
@@ -128,7 +129,8 @@ public final class ChannelSearchPatch {
         searchButtonViewRef = new WeakReference<>(imageView);
         parentView.setOnTouchListener((view, event) -> {
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                channelSearchArmed = false;
+                // Touching YouTube's original search button always means global search.
+                pendingChannelSearchBrowseId = "";
             }
             return false;
         });
@@ -208,7 +210,7 @@ public final class ChannelSearchPatch {
                     Gravity.CENTER);
             channelButton.addView(icon, iconParams);
             channelButton.setOnClickListener(view -> {
-                channelSearchArmed = true;
+                pendingChannelSearchBrowseId = currentBrowseId;
                 ImageView searchButton = searchButtonViewRef.get();
                 if (searchButton != null) {
                     searchButton.callOnClick();
@@ -216,7 +218,8 @@ public final class ChannelSearchPatch {
             });
 
             int index = toolbar.indexOfChild(toolbarItem);
-            toolbar.addView(channelButton, index < 0 ? toolbar.getChildCount() : index + 1);
+            // Put channel search first; the original global-search button stays to its right.
+            toolbar.addView(channelButton, index < 0 ? 0 : index);
             channelSearchButtonRef = new WeakReference<>(channelButton);
         } catch (Exception ex) {
             Logger.printException(() -> "updateChannelSearchButton failure", ex);
@@ -247,13 +250,13 @@ public final class ChannelSearchPatch {
      */
     public static boolean searchInChannel(@Nullable String query) {
         try {
-            if (!channelSearchArmed || !Settings.CHANNEL_SEARCH.get()
+            String channelId = pendingChannelSearchBrowseId;
+            if (channelId.isEmpty() || !Settings.CHANNEL_SEARCH.get()
                     || query == null || query.isEmpty()) {
                 return false;
             }
 
-            channelSearchArmed = false;
-            final String channelId = currentBrowseId;
+            pendingChannelSearchBrowseId = "";
             if (!isChannelId(channelId)) {
                 return false;
             }
