@@ -887,6 +887,20 @@ public final class VideoInformation {
     }
 
     /**
+     * Pauses the current video through the active ExoPlayer instance.
+     */
+    public static void pausePlayback() {
+        Utils.verifyOnMainThread();
+
+        ExoPlayerInterface exoPlayerInterface = exoPlayerImplRef.get();
+        if (exoPlayerInterface != null) {
+            exoPlayerInterface.patch_pause();
+        } else {
+            Logger.printDebug(() -> "Cannot pause playback because the ExoPlayer instance is unavailable");
+        }
+    }
+
+    /**
      * Injection point.
      */
     public static void setPlaybackSpeedMenu(PlaybackSpeedMenuInterface menu) {

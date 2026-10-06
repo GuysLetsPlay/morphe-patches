@@ -655,6 +655,27 @@ internal fun addExoPlayerHooks(extensionClass: String) {
                 )
             }
         )
+
+        methods.add(
+            ImmutableMethod(
+                type,
+                "patch_pause",
+                listOf(),
+                "V",
+                AccessFlags.PUBLIC.value or AccessFlags.FINAL.value,
+                null,
+                null,
+                MutableMethodImplementation(1),
+            ).toMutable().apply {
+                addInstructions(
+                    0,
+                    """
+                        invoke-interface { p0 }, Landroidx/media3/common/Player;->pause()V
+                        return-void
+                    """
+                )
+            }
+        )
     }
 }
 

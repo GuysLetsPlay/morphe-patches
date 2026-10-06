@@ -287,6 +287,10 @@ public class Settings extends SharedYouTubeSettings {
     public static final BooleanSetting HIDE_PLAYER_PREVIOUS_NEXT_BUTTONS = new BooleanSetting("morphe_hide_player_previous_next_buttons", FALSE, true);
     public static final BooleanSetting LOOP_VIDEO_BUTTON = new BooleanSetting("morphe_loop_video_button", FALSE, true);
     public static final BooleanSetting LOOP_VIDEO = new BooleanSetting("morphe_loop_video", FALSE);
+    public static final BooleanSetting AUTO_SLEEP_TIMER_ENABLED = new BooleanSetting("morphe_auto_sleep_timer_enabled", FALSE);
+    public static final StringSetting AUTO_SLEEP_TIMER_START = new StringSetting("morphe_auto_sleep_timer_start", "22:00");
+    public static final StringSetting AUTO_SLEEP_TIMER_END = new StringSetting("morphe_auto_sleep_timer_end", "05:00");
+    public static final IntegerSetting AUTO_SLEEP_TIMER_DURATION = new IntegerSetting("morphe_auto_sleep_timer_duration", 10);
     public static final BooleanSetting DO_NOT_REMEMBER_LOOP_VIDEO = new BooleanSetting("morphe_do_not_remember_loop_video", FALSE, parent(LOOP_VIDEO_BUTTON));
     public static final BooleanSetting MUTE_VIDEO_BUTTON = new BooleanSetting("morphe_mute_video_button", FALSE, true);
     public static final BooleanSetting PIP_BUTTON_OVERLAY = new BooleanSetting("morphe_pip_button_overlay", FALSE, new PipButtonPatchAvailability());

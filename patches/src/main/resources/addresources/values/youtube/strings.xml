@@ -530,6 +530,16 @@ Your API key should never be shared. Anyone with access to it can use your OpenR
     <string name="morphe_vot_mymemory_quota_message_with_email">You\'ve used today\'s MyMemory translation quota (50,000 characters). Switch to a different translation service or try again tomorrow</string>
     <string name="morphe_vot_mymemory_error">MyMemory translation failed (status %s)</string>
 
+    <!-- interaction.sleeptimer.automaticSleepTimerPatch -->
+    <string name="morphe_auto_sleep_timer_enabled_title">Automatic sleep timer</string>
+    <string name="morphe_auto_sleep_timer_enabled_summary">Pause playback after a period without interaction during the scheduled hours.</string>
+    <string name="morphe_auto_sleep_timer_start_title">Active from</string>
+    <string name="morphe_auto_sleep_timer_start_summary">Start time in 24-hour local time (HH:mm).</string>
+    <string name="morphe_auto_sleep_timer_end_title">Active until</string>
+    <string name="morphe_auto_sleep_timer_end_summary">End time in 24-hour local time (HH:mm).</string>
+    <string name="morphe_auto_sleep_timer_duration_title">Inactivity timeout (minutes)</string>
+    <string name="morphe_auto_sleep_timer_duration_summary">Pause playback after this long without user interaction (1–1440).</string>
+
     <!-- interaction.loop.loopVideoPatch -->
     <string name="morphe_loop_video_title">Enable loop video</string>
     <string name="morphe_do_not_remember_loop_video_title">Don\'t remember loop video</string>

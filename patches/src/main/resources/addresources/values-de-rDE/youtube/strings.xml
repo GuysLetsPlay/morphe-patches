@@ -488,6 +488,15 @@ Ein API-Key sollte niemals weitergegeben werden! Jeder mit Zugriff darauf kann d
   <string name="morphe_vot_mymemory_quota_message_no_email">Du hast dein tägliches kostenloses Übersetzungskontingent für MyMemory (5.000 Zeichen) verbraucht. Füge eine MyMemory registrierte E-Mail-Adresse in den Einstellungen hinzu, um das tägliche Limit auf 50.000 Zeichen zu erhöhen oder wechsel zu einem anderen Übersetzungsdienst</string>
   <string name="morphe_vot_mymemory_quota_message_with_email">Sie haben heute Ihr MyMemory-Übersetzungskontingent (50.000 Zeichen) verbraucht. Wechseln Sie zu einem anderen Übersetzungsdienst oder versuchen Sie es morgen erneut</string>
   <string name="morphe_vot_mymemory_error">Übersetzung mit MyMemory fehlgeschlagen (Status %s)</string>
+  <!-- interaction.sleeptimer.automaticSleepTimerPatch -->
+  <string name="morphe_auto_sleep_timer_enabled_title">Automatischer Ruhemodus-Timer</string>
+  <string name="morphe_auto_sleep_timer_enabled_summary">Pausiert die Wiedergabe während der festgelegten Zeiten, wenn keine Interaktion erfolgt.</string>
+  <string name="morphe_auto_sleep_timer_start_title">Aktiv ab</string>
+  <string name="morphe_auto_sleep_timer_start_summary">Startzeit im 24-Stunden-Format (HH:mm).</string>
+  <string name="morphe_auto_sleep_timer_end_title">Aktiv bis</string>
+  <string name="morphe_auto_sleep_timer_end_summary">Endzeit im 24-Stunden-Format (HH:mm).</string>
+  <string name="morphe_auto_sleep_timer_duration_title">Inaktivitätsdauer (Minuten)</string>
+  <string name="morphe_auto_sleep_timer_duration_summary">Pausiert die Wiedergabe nach dieser Zeit ohne Interaktion (1–1440 Minuten).</string>
   <!-- interaction.loop.loopVideoPatch -->
   <string name="morphe_loop_video_title">Videowiederholung aktivieren</string>
   <string name="morphe_do_not_remember_loop_video_title">Schleifenwiedergabe nicht merken</string>
