@@ -199,7 +199,7 @@ public final class ChannelSearchPatch {
         searchButtonParentRef = new WeakReference<>(parentView);
         searchButtonViewRef = new WeakReference<>(imageView);
         //noinspection ClickableViewAccessibility
-        parentView.setOnTouchListener((view, event) -> {
+        imageView.setOnTouchListener((view, event) -> {
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 // YouTube's original search icon always starts a global search.
                 pendingChannelSearchBrowseId = "";
