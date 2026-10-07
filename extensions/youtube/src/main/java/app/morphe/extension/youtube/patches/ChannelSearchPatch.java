@@ -139,6 +139,8 @@ public final class ChannelSearchPatch {
     private static final int THUMBNAIL_CORNER_RADIUS = Dim.dp(8);
     private static final int THUMBNAIL_TIMEOUT_MILLISECONDS = 10 * 1000;
 
+    private static final int TOOLBAR_ID = ResourceUtils.getIdIdentifier("toolbar");
+
     private static final int DIALOG_ANIMATION_DURATION_MILLISECONDS = 300;
 
     /**
@@ -215,28 +217,22 @@ public final class ChannelSearchPatch {
             View button = channelSearchButtonRef.get();
             View originalParent = searchButtonParentRef.get();
             ImageView originalIcon = searchButtonViewRef.get();
-            boolean visible = Settings.CHANNEL_SEARCH.get() && isChannelId(currentBrowseId);
+            final boolean visible = Settings.CHANNEL_SEARCH.get() && isChannelId(currentBrowseId);
 
             View toolbarItem = originalParent;
             ViewGroup toolbar = null;
             if (originalParent != null) {
-                int toolbarId = originalParent.getResources().getIdentifier(
-                        "toolbar", "id", originalParent.getContext().getPackageName());
                 View current = originalParent;
                 while (current.getParent() instanceof ViewGroup parent) {
                     if (current.getId() != View.NO_ID) {
-                        try {
-                            String entryName = current.getResources().getResourceEntryName(current.getId());
-                            if (entryName.startsWith("menu_item_")) {
-                                toolbar = parent;
-                                toolbarItem = current;
-                                break;
-                            }
-                        } catch (Exception ignored) {
-                            // Continue toward the toolbar's action row.
+                        String entryName = current.getResources().getResourceEntryName(current.getId());
+                        if (entryName.startsWith("menu_item_")) {
+                            toolbar = parent;
+                            toolbarItem = current;
+                            break;
                         }
                     }
-                    if (toolbarId != 0 && parent.getId() == toolbarId) {
+                    if (TOOLBAR_ID != 0 && parent.getId() == TOOLBAR_ID) {
                         toolbar = parent;
                         toolbarItem = current;
                         break;
@@ -260,14 +256,14 @@ public final class ChannelSearchPatch {
             }
             FrameLayout channelButton = new FrameLayout(toolbarItem.getContext());
             channelButton.setLayoutParams(buttonParams);
-            channelButton.setContentDescription("Search in channel");
+            channelButton.setContentDescription(str("morphe_channel_search_hint"));
             channelButton.setFocusable(true);
             channelButton.setClickable(true);
 
             ImageView icon = new ImageView(originalParent.getContext());
             Drawable searchIcon = ResourceUtils.getDrawable("morphe_channel_search_button");
             if (searchIcon == null) {
-                Logger.printDebug(() -> "updateChannelSearchButton icon not found");
+                Logger.printException(() -> "updateChannelSearchButton drawable not found");
                 return;
             }
             searchIcon.setTint(ThemeUtils.getAppForegroundColor());
@@ -280,7 +276,7 @@ public final class ChannelSearchPatch {
                 if (searchButton != null) searchButton.callOnClick();
             });
 
-            int index = toolbar.indexOfChild(toolbarItem);
+            final int index = toolbar.indexOfChild(toolbarItem);
             toolbar.addView(channelButton, Math.max(index, 0));
             channelSearchButtonRef = new WeakReference<>(channelButton);
         } catch (Exception ex) {
@@ -289,7 +285,9 @@ public final class ChannelSearchPatch {
     }
 
     private static ViewGroup.LayoutParams copyLayoutParams(ViewGroup.LayoutParams original) {
-        if (original == null) return new ViewGroup.LayoutParams(Dim.dp48, Dim.dp48);
+        if (original == null) {
+            return new ViewGroup.LayoutParams(Dim.dp48, Dim.dp48);
+        }
         if (original instanceof LinearLayout.LayoutParams linear) {
             return new LinearLayout.LayoutParams(linear);
         }
@@ -570,7 +568,7 @@ public final class ChannelSearchPatch {
             if (row == null) {
                 row = createResultRow(activity, result);
                 row.setTag(result.videoId);
-                final String videoId = result.videoId;
+                String videoId = result.videoId;
                 row.setOnClickListener(view -> {
                     dialog.dismiss();
                     Utils.runOnMainThreadDelayed(() -> {
