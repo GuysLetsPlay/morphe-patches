@@ -1,28 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    https://github.com/google/material-design-icons/blob/master/symbols/android/zoom_in/materialsymbolsoutlined/zoom_in_wght300gradN25_24px.xml
-    Changes made: Removed the theme tint, which is set at runtime.
-
-    Copyright 2022 Google
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
--->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="960"
-    android:viewportHeight="960">
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M3,11a8,8 0,1 0,16 0a8,8 0,1 0,-16 0M16.66,16.66L21,21"
+        android:strokeWidth="2"
+        android:strokeColor="@android:color/white"
+        android:strokeLineCap="round" />
     <path
         android:fillColor="@android:color/white"
-        android:pathData="M777.65,816.11L529.76,568.11Q500.15,592.88 461.46,606.33Q422.77,619.77 382.23,619.77Q281.78,619.77 212.45,550.41Q143.12,481.05 143.12,380.91Q143.12,280.77 212.37,211.31Q281.63,141.85 381.87,141.85Q482.11,141.85 551.58,211.27Q621.04,280.7 621.04,380.94Q621.04,422.85 606.96,461.69Q592.88,500.54 569.38,528.97L817.38,776.38L777.65,816.11ZM382.08,563.81Q458.88,563.81 511.98,510.79Q565.08,457.76 565.08,380.79Q565.08,303.81 511.98,250.81Q458.88,197.81 381.98,197.81Q305.08,197.81 252.08,250.83Q199.08,303.85 199.08,380.83Q199.08,457.81 252.09,510.81Q305.11,563.81 382.08,563.81ZM354,485.27L354,408.69L277.62,408.69L277.62,352.73L354,352.73L354,276.35L409.96,276.35L409.96,352.73L486.54,352.73L486.54,408.69L409.96,408.69L409.96,485.27L354,485.27Z" />
+        android:pathData="M11,8.6m-2.1,0a2.1,2.1 0,1 0,4.2 0a2.1,2.1 0,1 0,-4.2 0M7.3,15.2C7.6,13.1 9.1,12 11,12C12.9,12 14.4,13.1 14.7,15.2C13.7,15.9 12.4,16.3 11,16.3C9.6,16.3 8.3,15.9 7.3,15.2Z" />
 </vector>
