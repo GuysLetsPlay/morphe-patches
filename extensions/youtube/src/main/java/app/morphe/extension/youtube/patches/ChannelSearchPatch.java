@@ -15,11 +15,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.ColorFilter;
 import android.graphics.Outline;
-import android.graphics.Paint;
-import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.ShapeDrawable;
@@ -54,6 +50,7 @@ import java.util.List;
 import java.util.Map;
 
 import app.morphe.extension.shared.Logger;
+import app.morphe.extension.shared.ResourceUtils;
 import app.morphe.extension.shared.Utils;
 import app.morphe.extension.shared.settings.search.BaseSearchViewController;
 import app.morphe.extension.shared.theme.ThemeUtils;
@@ -201,6 +198,7 @@ public final class ChannelSearchPatch {
         }
         searchButtonParentRef = new WeakReference<>(parentView);
         searchButtonViewRef = new WeakReference<>(imageView);
+        //noinspection ClickableViewAccessibility
         parentView.setOnTouchListener((view, event) -> {
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 // YouTube's original search icon always starts a global search.
@@ -253,8 +251,7 @@ public final class ChannelSearchPatch {
                 if (button.getParent() instanceof ViewGroup oldParent) oldParent.removeView(button);
                 channelSearchButtonRef = new WeakReference<>(null);
             }
-            if (!visible || originalParent == null || originalIcon == null
-                    || toolbar == null || toolbarItem == null) return;
+            if (!visible || originalParent == null || originalIcon == null || toolbar == null) return;
 
             ViewGroup.LayoutParams buttonParams = copyLayoutParams(toolbarItem.getLayoutParams());
             if (buttonParams instanceof LinearLayout.LayoutParams linearParams) {
@@ -268,8 +265,13 @@ public final class ChannelSearchPatch {
             channelButton.setClickable(true);
 
             ImageView icon = new ImageView(originalParent.getContext());
-            icon.setImageDrawable(new ChannelSearchIconDrawable(
-                    ThemeUtils.getAppForegroundColor(), ThemeUtils.getAppBackgroundColor()));
+            Drawable searchIcon = ResourceUtils.getDrawable("morphe_channel_search_button");
+            if (searchIcon == null) {
+                Logger.printDebug(() -> "updateChannelSearchButton icon not found");
+                return;
+            }
+            searchIcon.setTint(ThemeUtils.getAppForegroundColor());
+            icon.setImageDrawable(searchIcon);
             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
             channelButton.addView(icon, new FrameLayout.LayoutParams(Dim.dp24, Dim.dp24, Gravity.CENTER));
             channelButton.setOnClickListener(view -> {
@@ -279,56 +281,11 @@ public final class ChannelSearchPatch {
             });
 
             int index = toolbar.indexOfChild(toolbarItem);
-            toolbar.addView(channelButton, index < 0 ? 0 : index);
+            toolbar.addView(channelButton, Math.max(index, 0));
             channelSearchButtonRef = new WeakReference<>(channelButton);
         } catch (Exception ex) {
             Logger.printException(() -> "updateChannelSearchButton failure", ex);
         }
-    }
-
-    /** Single custom-drawn magnifier-plus glyph for channel-scoped search. */
-    private static final class ChannelSearchIconDrawable extends Drawable {
-        private static final float VIEWPORT_SIZE = 24f;
-        private final Paint lensPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint handlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint plusPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-        ChannelSearchIconDrawable(int foregroundColor, int backgroundColor) {
-            lensPaint.setColor(foregroundColor);
-            lensPaint.setStyle(Paint.Style.FILL);
-            handlePaint.setColor(foregroundColor);
-            handlePaint.setStyle(Paint.Style.STROKE);
-            handlePaint.setStrokeWidth(2.4f);
-            handlePaint.setStrokeCap(Paint.Cap.ROUND);
-            plusPaint.setColor(backgroundColor);
-            plusPaint.setStyle(Paint.Style.STROKE);
-            plusPaint.setStrokeWidth(1.8f);
-            plusPaint.setStrokeCap(Paint.Cap.ROUND);
-        }
-
-        @Override public void draw(Canvas canvas) {
-            android.graphics.Rect bounds = getBounds();
-            if (bounds.isEmpty()) return;
-            int saveCount = canvas.save();
-            canvas.translate(bounds.left, bounds.top);
-            canvas.scale(bounds.width() / VIEWPORT_SIZE, bounds.height() / VIEWPORT_SIZE);
-            canvas.drawLine(15.1f, 15.1f, 21f, 21f, handlePaint);
-            canvas.drawCircle(10f, 10f, 7.2f, lensPaint);
-            canvas.drawLine(7.5f, 10f, 12.5f, 10f, plusPaint);
-            canvas.drawLine(10f, 7.5f, 10f, 12.5f, plusPaint);
-            canvas.restoreToCount(saveCount);
-        }
-
-        @Override public void setAlpha(int alpha) {
-            lensPaint.setAlpha(alpha); handlePaint.setAlpha(alpha); plusPaint.setAlpha(alpha); invalidateSelf();
-        }
-        @Override public void setColorFilter(@Nullable ColorFilter colorFilter) {
-            lensPaint.setColorFilter(colorFilter); handlePaint.setColorFilter(colorFilter);
-            plusPaint.setColorFilter(colorFilter); invalidateSelf();
-        }
-        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
-        @Override public int getIntrinsicWidth() { return Dim.dp24; }
-        @Override public int getIntrinsicHeight() { return Dim.dp24; }
     }
 
     private static ViewGroup.LayoutParams copyLayoutParams(ViewGroup.LayoutParams original) {
