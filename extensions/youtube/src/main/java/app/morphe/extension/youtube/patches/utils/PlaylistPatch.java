@@ -26,9 +26,19 @@ import org.apache.commons.collections4.BidiMap;
 import org.apache.commons.collections4.bidimap.DualHashBidiMap;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.ref.WeakReference;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 import app.morphe.extension.shared.Logger;
@@ -76,6 +86,7 @@ public class PlaylistPatch {
             : Settings.QUEUE_PLAYLIST_ID.resetToDefault();
     private static volatile String videoId = "";
     private static volatile boolean syncStarted;
+    private static volatile WeakReference<Object> playbackQueueManagerRef = new WeakReference<>(null);
 
     @GuardedBy("itself")
     private static final BidiMap<String, String> lastVideoIds = new DualHashBidiMap<>();
@@ -119,6 +130,16 @@ public class PlaylistPatch {
         if (!playlistId.isEmpty() && !syncStarted && !AuthUtils.isNotLoggedIn()) {
             syncStarted = true;
             syncPlaylistItems();
+        }
+    }
+
+    /**
+     * Injection point for YouTube's playback queue manager. The manager is owned by the active
+     * player and lets us add videos to the live queue without reopening the current watch URL.
+     */
+    public static void initializePlaybackQueueManager(Object queueManager) {
+        if (queueManager != null) {
+            playbackQueueManagerRef = new WeakReference<>(queueManager);
         }
     }
 
@@ -334,13 +355,169 @@ public class PlaylistPatch {
                     openQueue(context);
                 } else if (openVideo) {
                     openQueue(context, queuedVideoId, true, reload);
-                } else if (reload || !currentVideoWasBound) {
-                    // YouTube only advances through a playlist after the active video is
-                    // opened with that playlist attached.
+                } else if (reload) {
                     openQueue(context, playingVideoId, true, true);
+                } else if (!addVideoToLivePlaybackQueue(
+                        playingVideoId,
+                        queuedVideoId,
+                        playlistId)) {
+                    // Preserve the old behavior on YouTube builds where the in-memory playback
+                    // queue could not be found or updated.
+                    if (!currentVideoWasBound) {
+                        openQueue(context, playingVideoId, true, true);
+                    } else {
+                        showToast(fetchFailedAdd);
+                    }
                 }
             }
         });
+    }
+
+    private static boolean addVideoToLivePlaybackQueue(String playingVideoId,
+                                                       String queuedVideoId,
+                                                       String currentPlaylistId) {
+        if (Utils.isCurrentlyOnMainThread()) {
+            return insertVideoIntoLivePlaybackQueue(playingVideoId, queuedVideoId, currentPlaylistId);
+        }
+
+        AtomicBoolean result = new AtomicBoolean();
+        CountDownLatch completed = new CountDownLatch(1);
+        Utils.runOnMainThreadNowOrLater(() -> {
+            try {
+                result.set(insertVideoIntoLivePlaybackQueue(
+                        playingVideoId, queuedVideoId, currentPlaylistId));
+            } finally {
+                completed.countDown();
+            }
+        });
+        try {
+            return completed.await(2, TimeUnit.SECONDS) && result.get();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            Logger.printException(() -> "Interrupted while updating the live playback queue", ex);
+            return false;
+        }
+    }
+
+    private static boolean insertVideoIntoLivePlaybackQueue(String playingVideoId,
+                                                            String queuedVideoId,
+                                                            String currentPlaylistId) {
+        Object queueManager = playbackQueueManagerRef.get();
+        if (queueManager == null) {
+            Logger.printDebug(() -> "Playback queue manager is not available");
+            return false;
+        }
+
+        try {
+            Object queue = findLiveQueue(queueManager);
+            if (queue == null) {
+                Logger.printDebug(() -> "Live playback queue is not available");
+                return false;
+            }
+
+            Method sizeMethod = queue.getClass().getMethod("i", int.class);
+            Method getItemMethod = queue.getClass().getMethod("B", int.class, int.class);
+            Method insertItemsMethod = queue.getClass().getMethod(
+                    "n", int.class, int.class, Collection.class);
+
+            int itemCount = (int) sizeMethod.invoke(queue, 0);
+            int activeIndex = -1;
+            Object activeItem = null;
+            Method getDescriptorMethod = null;
+
+            for (int index = 0; index < itemCount; index++) {
+                Object item = getItemMethod.invoke(queue, 0, index);
+                Method itemDescriptorMethod = item.getClass().getMethod("a");
+                Object descriptor = itemDescriptorMethod.invoke(item);
+                Method videoIdMethod = descriptor.getClass().getMethod("v");
+                String itemVideoId = (String) videoIdMethod.invoke(descriptor);
+
+                if (queuedVideoId.equals(itemVideoId)) {
+                    Logger.printDebug(() -> "Video is already in the live playback queue");
+                    return true;
+                }
+                if (playingVideoId.equals(itemVideoId)) {
+                    activeIndex = index;
+                    activeItem = item;
+                    getDescriptorMethod = itemDescriptorMethod;
+                }
+            }
+
+            if (activeIndex < 0 || activeItem == null) {
+                Logger.printDebug(() -> "Current video was not found in the live playback queue");
+                return false;
+            }
+
+            Object activeDescriptor = getDescriptorMethod.invoke(activeItem);
+            Object descriptorBuilder = activeDescriptor.getClass().getMethod("f").invoke(activeDescriptor);
+            Field videoIdField = descriptorBuilder.getClass().getField("r");
+            Field playlistIdField = descriptorBuilder.getClass().getField("s");
+            videoIdField.set(descriptorBuilder, queuedVideoId);
+            if (!TextUtils.isEmpty(currentPlaylistId)) {
+                playlistIdField.set(descriptorBuilder, currentPlaylistId);
+            }
+
+            Object queuedDescriptor = descriptorBuilder.getClass().getMethod("a")
+                    .invoke(descriptorBuilder);
+            // The new queue item's index can differ from the old playlist index carried by the
+            // active descriptor. Clear it so YouTube resolves the queued video by ID in the list.
+            Field protoField = queuedDescriptor.getClass().getField("a");
+            Object playbackProto = protoField.get(queuedDescriptor);
+            Field playlistIndexField = playbackProto.getClass().getField("g");
+            Field presenceBitsField = playbackProto.getClass().getField("b");
+            playlistIndexField.setInt(playbackProto, 0);
+            presenceBitsField.setInt(playbackProto, presenceBitsField.getInt(playbackProto) & ~4);
+
+            Constructor<?> queueItemConstructor = null;
+            for (Constructor<?> constructor : activeItem.getClass().getDeclaredConstructors()) {
+                Class<?>[] parameterTypes = constructor.getParameterTypes();
+                if (parameterTypes.length == 2
+                        && parameterTypes[0] == UUID.class
+                        && parameterTypes[1].isInstance(queuedDescriptor)) {
+                    queueItemConstructor = constructor;
+                    break;
+                }
+            }
+            if (queueItemConstructor == null) {
+                Logger.printDebug(() -> "Could not find a constructor for YouTube's playback queue item");
+                return false;
+            }
+
+            queueItemConstructor.setAccessible(true);
+            Object queuedItem = queueItemConstructor.newInstance(UUID.randomUUID(), queuedDescriptor);
+            insertItemsMethod.invoke(queue, 0, activeIndex + 1,
+                    Collections.singletonList(queuedItem));
+            int insertedIndex = activeIndex + 1;
+            Logger.printDebug(() -> "Added video to the live playback queue at index "
+                    + insertedIndex);
+            return true;
+        } catch (Exception ex) {
+            Logger.printException(() -> "Could not add video to the live playback queue", ex);
+            return false;
+        }
+    }
+
+    private static Object findLiveQueue(Object queueManager) {
+        for (Class<?> type = queueManager.getClass(); type != null; type = type.getSuperclass()) {
+            for (Field field : type.getDeclaredFields()) {
+                try {
+                    field.setAccessible(true);
+                    Object candidate = field.get(queueManager);
+                    if (candidate == null) {
+                        continue;
+                    }
+                    Class<?> candidateType = candidate.getClass();
+                    candidateType.getMethod("i", int.class);
+                    candidateType.getMethod("j");
+                    candidateType.getMethod("B", int.class, int.class);
+                    candidateType.getMethod("n", int.class, int.class, Collection.class);
+                    return candidate;
+                } catch (Exception ignored) {
+                    // Try the next field. Most manager fields are unrelated to the video queue.
+                }
+            }
+        }
+        return null;
     }
 
     private static boolean createQueueWithVideos(String firstVideoId, String secondVideoId) {
