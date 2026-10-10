@@ -423,6 +423,7 @@ public class PlaylistPatch {
             int activeIndex = -1;
             Object activeItem = null;
             Method getDescriptorMethod = null;
+            int playbackIndex = (int) queue.getClass().getMethod("j").invoke(queue);
 
             for (int index = 0; index < itemCount; index++) {
                 Object item = getItemMethod.invoke(queue, 0, index);
@@ -442,8 +443,26 @@ public class PlaylistPatch {
                 }
             }
 
+            // The queue reports its active entry directly. Its descriptor can lag behind
+            // VideoInformation while YouTube is transitioning between items, so prefer this
+            // index over matching the current video ID when it is valid.
+            if (playbackIndex >= 0 && playbackIndex < itemCount) {
+                activeIndex = playbackIndex;
+                activeItem = getItemMethod.invoke(queue, 0, activeIndex);
+                getDescriptorMethod = activeItem.getClass().getMethod("a");
+                Object playbackDescriptor = getDescriptorMethod.invoke(activeItem);
+                String playbackVideoId = (String) playbackDescriptor.getClass()
+                        .getMethod("v").invoke(playbackDescriptor);
+                if (!playingVideoId.equals(playbackVideoId)) {
+                    Logger.printDebug(() -> "Using active playback queue index " + playbackIndex
+                            + " for video " + playbackVideoId
+                            + " while player reports " + playingVideoId);
+                }
+            }
+
             if (activeIndex < 0 || activeItem == null) {
-                Logger.printDebug(() -> "Current video was not found in the live playback queue");
+                Logger.printDebug(() -> "Current video was not found in the live playback queue"
+                        + " (items=" + itemCount + ", playbackIndex=" + playbackIndex + ")");
                 return false;
             }
 
