@@ -18,6 +18,8 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
@@ -37,14 +39,23 @@ public class CreatePlaylistRequest {
     public static final Map<String, CreatePlaylistRequest> cache = Collections.synchronizedMap(
             Utils.createSizeRestrictedMap(50));
 
-    private final Future<Pair<String, String>> future;
+    private final Future<Pair<String, Map<String, String>>> future;
 
-    private CreatePlaylistRequest(String videoId, Map<String, String> requestHeader) {
-        this.future = Utils.submitOnBackgroundThread(() -> fetch(videoId, requestHeader));
+    private CreatePlaylistRequest(List<String> videoIds, Map<String, String> requestHeader) {
+        this.future = Utils.submitOnBackgroundThread(() -> fetch(videoIds, requestHeader));
     }
 
     @Nullable
     public Pair<String, String> getPlaylistId() {
+        Pair<String, Map<String, String>> result = getPlaylistItems();
+        if (result == null || result.getSecond().isEmpty()) {
+            return null;
+        }
+        return new Pair<>(result.getFirst(), result.getSecond().values().iterator().next());
+    }
+
+    @Nullable
+    public Pair<String, Map<String, String>> getPlaylistItems() {
         try {
             if (BaseSettings.DEBUG.get() && !future.isDone() && Utils.isCurrentlyOnMainThread()) {
                 Logger.printException(() -> "Debug: Blocking main thread");
@@ -66,15 +77,33 @@ public class CreatePlaylistRequest {
     }
 
     public static void fetchRequestIfNeeded(String videoId, Map<String, String> requestHeader) {
+        fetchRequestIfNeeded(List.of(Objects.requireNonNull(videoId)), requestHeader);
+    }
+
+    public static void fetchRequestIfNeeded(List<String> videoIds, Map<String, String> requestHeader) {
+        if (videoIds.isEmpty()) {
+            return;
+        }
+        List<String> safeVideoIds = List.copyOf(videoIds);
+        String cacheKey = getCacheKey(safeVideoIds);
         cache.computeIfAbsent(
-                Objects.requireNonNull(videoId),
-                k -> new CreatePlaylistRequest(k, requestHeader)
+                cacheKey,
+                k -> new CreatePlaylistRequest(safeVideoIds, requestHeader)
         );
     }
 
     @Nullable
     public static CreatePlaylistRequest getRequestForVideoId(String videoId) {
-        return cache.get(videoId);
+        return cache.get(getCacheKey(List.of(Objects.requireNonNull(videoId))));
+    }
+
+    @Nullable
+    public static CreatePlaylistRequest getRequestForVideoIds(List<String> videoIds) {
+        return cache.get(getCacheKey(videoIds));
+    }
+
+    private static String getCacheKey(List<String> videoIds) {
+        return videoIds.size() == 1 ? videoIds.get(0) : "multi:" + String.join(",", videoIds);
     }
 
     private static void handleConnectionError(String toastMessage, @Nullable Exception ex) {
@@ -83,17 +112,16 @@ public class CreatePlaylistRequest {
 
     @Nullable
     private static JSONObject sendCreatePlaylistRequest(
-            String videoId,
+            List<String> videoIds,
             Map<String, String> requestHeader
     ) {
-        Objects.requireNonNull(videoId);
         Utils.verifyOffMainThread();
 
         final long startTime = System.currentTimeMillis();
-        Logger.printDebug(() -> "Fetching create playlist request for: " + videoId);
+        Logger.printDebug(() -> "Fetching create playlist request for: " + videoIds);
 
         try {
-            byte[] requestBody = PlaylistRoutes.createPlaylistBody(videoId, str("morphe_queue_manager_playlist_title"));
+            byte[] requestBody = PlaylistRoutes.createPlaylistBody(videoIds, str("morphe_queue_manager_playlist_title"));
             HttpURLConnection connection = PlaylistRoutes.getConnection(PlaylistRoutes.CREATE_PLAYLIST, requestHeader);
             connection.setFixedLengthStreamingMode(requestBody.length);
             connection.getOutputStream().write(requestBody);
@@ -109,7 +137,7 @@ public class CreatePlaylistRequest {
         } catch (Exception ex) {
             Logger.printException(() -> "sendCreatePlaylistRequest failed", ex);
         } finally {
-            Logger.printDebug(() -> "video: " + videoId + " took: " + (System.currentTimeMillis() - startTime) + "ms");
+            Logger.printDebug(() -> "videos: " + videoIds + " took: " + (System.currentTimeMillis() - startTime) + "ms");
         }
         return null;
     }
@@ -180,18 +208,24 @@ public class CreatePlaylistRequest {
     }
 
     @Nullable
-    private static Pair<String, String> fetch(String videoId, Map<String, String> requestHeader) {
-        JSONObject createPlaylistJson = sendCreatePlaylistRequest(videoId, requestHeader);
+    private static Pair<String, Map<String, String>> fetch(List<String> videoIds, Map<String, String> requestHeader) {
+        JSONObject createPlaylistJson = sendCreatePlaylistRequest(videoIds, requestHeader);
         if (createPlaylistJson != null) {
             String playlistId = parseCreatePlaylistResponse(createPlaylistJson);
             if (playlistId != null) {
-                JSONObject setVideoIdJson = sendSetVideoIdRequest(videoId, playlistId, requestHeader);
-                if (setVideoIdJson != null) {
-                    String setVideoId = parseSetVideoIdResponse(setVideoIdJson);
-                    if (setVideoId != null) {
-                        return new Pair<>(playlistId, setVideoId);
+                Map<String, String> setVideoIds = new LinkedHashMap<>();
+                for (String videoId : videoIds) {
+                    JSONObject setVideoIdJson = sendSetVideoIdRequest(videoId, playlistId, requestHeader);
+                    if (setVideoIdJson == null) {
+                        return null;
                     }
+                    String setVideoId = parseSetVideoIdResponse(setVideoIdJson);
+                    if (setVideoId == null) {
+                        return null;
+                    }
+                    setVideoIds.put(videoId, setVideoId);
                 }
+                return new Pair<>(playlistId, setVideoIds);
             }
         }
         return null;

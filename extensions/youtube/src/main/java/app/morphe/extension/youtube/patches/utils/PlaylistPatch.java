@@ -27,6 +27,7 @@ import org.apache.commons.collections4.bidimap.DualHashBidiMap;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -299,24 +300,33 @@ public class PlaylistPatch {
                     Map<String, String> items = GetPlaylistItemsRequest.fetch(
                             currentPlaylistId, AuthUtils.getRequestHeader());
                     if (items == null) {
-                        if (!lastVideoIds.isEmpty()) {
-                            showToast(fetchFailedAdd);
-                            return;
-                        }
+                        Logger.printDebug(() -> "Could not sync temporary queue items; trying cached IDs and playlist edits");
                     } else {
                         lastVideoIds.putAll(items);
                     }
                 }
 
                 boolean creatingQueue = playlistId.isEmpty();
-                if (!ensureVideoInQueue(playingVideoId)) {
-                    showToast(creatingQueue ? fetchFailedCreate : fetchFailedAdd);
-                    return;
-                }
-                if (!queuedVideoId.equals(playingVideoId)
+                if (creatingQueue) {
+                    if (!createQueueWithVideos(playingVideoId, queuedVideoId)) {
+                        showToast(fetchFailedCreate);
+                        return;
+                    }
+                } else if (!ensureVideoInQueue(playingVideoId)
+                        || !queuedVideoId.equals(playingVideoId)
                         && !ensureVideoInQueue(queuedVideoId)) {
-                    showToast(fetchFailedAdd);
-                    return;
+                    // Temporary queue playlists can become unavailable to browse/edit requests.
+                    // Recreate them with both videos in one create request so neither item is lost.
+                    playlistId = Settings.QUEUE_PLAYLIST_ID.resetToDefault();
+                    lastVideoIds.clear();
+                    EditPlaylistRequest.clear();
+                    CreatePlaylistRequest.clear();
+                    creatingQueue = true;
+                    currentVideoWasBound = false;
+                    if (!createQueueWithVideos(playingVideoId, queuedVideoId)) {
+                        showToast(fetchFailedCreate);
+                        return;
+                    }
                 }
 
                 showToast(creatingQueue ? fetchSucceededCreate : fetchSucceededAdd);
@@ -331,6 +341,28 @@ public class PlaylistPatch {
                 }
             }
         });
+    }
+
+    private static boolean createQueueWithVideos(String firstVideoId, String secondVideoId) {
+        List<String> videoIds = firstVideoId.equals(secondVideoId)
+                ? List.of(firstVideoId)
+                : List.of(firstVideoId, secondVideoId);
+        CreatePlaylistRequest.fetchRequestIfNeeded(videoIds, AuthUtils.getRequestHeader());
+        CreatePlaylistRequest request = CreatePlaylistRequest.getRequestForVideoIds(videoIds);
+        Pair<String, Map<String, String>> result = request == null ? null : request.getPlaylistItems();
+        if (result == null || result.getFirst() == null
+                || result.getSecond().size() != videoIds.size()) {
+            return false;
+        }
+
+        playlistId = result.getFirst();
+        if (Settings.QUEUE_RESTORE.get()) {
+            Settings.QUEUE_PLAYLIST_ID.save(playlistId);
+        }
+        lastVideoIds.putAll(result.getSecond());
+        Logger.printDebug(() -> "Queue created with " + result.getSecond().size()
+                + " videos, playlistId: " + result.getFirst());
+        return true;
     }
 
     private static boolean ensureVideoInQueue(String targetVideoId) {

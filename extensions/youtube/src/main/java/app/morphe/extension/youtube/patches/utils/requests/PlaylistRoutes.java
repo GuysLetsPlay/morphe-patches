@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import java.util.List;
 import java.util.Map;
 
 import app.morphe.extension.shared.Logger;
@@ -97,13 +98,21 @@ public final class PlaylistRoutes {
     }
 
     public static byte[] createPlaylistBody(String videoId, String title) {
+        return createPlaylistBody(List.of(videoId), title);
+    }
+
+    public static byte[] createPlaylistBody(List<String> videoIds, String title) {
         try {
             JSONObject body = getBaseContentJson();
             body.put("params", "CAQ%3D");
             body.put("title", title);
-            JSONArray videoIds = new JSONArray();
-            videoIds.put(videoId);
-            body.put("videoIds", videoIds);
+            JSONArray videoIdArray = new JSONArray();
+            for (String videoId : videoIds) {
+                if (videoId != null && !videoId.isEmpty()) {
+                    videoIdArray.put(videoId);
+                }
+            }
+            body.put("videoIds", videoIdArray);
             return body.toString().getBytes(StandardCharsets.UTF_8);
         } catch (JSONException ex) {
             Logger.printException(() -> "createPlaylistBody failed", ex);
