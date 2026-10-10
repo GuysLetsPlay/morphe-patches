@@ -31,7 +31,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collection;
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -460,59 +460,101 @@ public class PlaylistPatch {
                 }
             }
 
+            List<Object> itemsToInsert = new ArrayList<>(2);
+            int insertionIndex;
             if (activeIndex < 0 || activeItem == null) {
-                Logger.printDebug(() -> "Current video was not found in the live playback queue"
-                        + " (items=" + itemCount + ", playbackIndex=" + playbackIndex + ")");
-                return false;
-            }
-
-            Object activeDescriptor = getDescriptorMethod.invoke(activeItem);
-            Object descriptorBuilder = activeDescriptor.getClass().getMethod("f").invoke(activeDescriptor);
-            Field videoIdField = descriptorBuilder.getClass().getField("r");
-            Field playlistIdField = descriptorBuilder.getClass().getField("s");
-            videoIdField.set(descriptorBuilder, queuedVideoId);
-            if (!TextUtils.isEmpty(currentPlaylistId)) {
-                playlistIdField.set(descriptorBuilder, currentPlaylistId);
-            }
-
-            Object queuedDescriptor = descriptorBuilder.getClass().getMethod("a")
-                    .invoke(descriptorBuilder);
-            // The new queue item's index can differ from the old playlist index carried by the
-            // active descriptor. Clear it so YouTube resolves the queued video by ID in the list.
-            Field protoField = queuedDescriptor.getClass().getField("a");
-            Object playbackProto = protoField.get(queuedDescriptor);
-            Field playlistIndexField = playbackProto.getClass().getField("g");
-            Field presenceBitsField = playbackProto.getClass().getField("b");
-            playlistIndexField.setInt(playbackProto, 0);
-            presenceBitsField.setInt(playbackProto, presenceBitsField.getInt(playbackProto) & ~4);
-
-            Constructor<?> queueItemConstructor = null;
-            for (Constructor<?> constructor : activeItem.getClass().getDeclaredConstructors()) {
-                Class<?>[] parameterTypes = constructor.getParameterTypes();
-                if (parameterTypes.length == 2
-                        && parameterTypes[0] == UUID.class
-                        && parameterTypes[1].isInstance(queuedDescriptor)) {
-                    queueItemConstructor = constructor;
-                    break;
+                Logger.printDebug(() -> "No active entry in the live playback queue"
+                        + " (items=" + itemCount + ", playbackIndex=" + playbackIndex
+                        + "); seeding it with the playing and queued videos");
+                Object currentDescriptor = createPlaybackQueueDescriptor(
+                        getItemMethod, playingVideoId, currentPlaylistId);
+                Object queuedDescriptor = createPlaybackQueueDescriptor(
+                        getItemMethod, queuedVideoId, currentPlaylistId);
+                if (currentDescriptor == null || queuedDescriptor == null) {
+                    return false;
                 }
-            }
-            if (queueItemConstructor == null) {
-                Logger.printDebug(() -> "Could not find a constructor for YouTube's playback queue item");
-                return false;
+                itemsToInsert.add(createPlaybackQueueItem(
+                        getItemMethod.getReturnType(), currentDescriptor));
+                itemsToInsert.add(createPlaybackQueueItem(
+                        getItemMethod.getReturnType(), queuedDescriptor));
+                insertionIndex = 0;
+            } else {
+                Object activeDescriptor = getDescriptorMethod.invoke(activeItem);
+                Object descriptorBuilder = activeDescriptor.getClass().getMethod("f")
+                        .invoke(activeDescriptor);
+                Field videoIdField = descriptorBuilder.getClass().getField("r");
+                Field playlistIdField = descriptorBuilder.getClass().getField("s");
+                videoIdField.set(descriptorBuilder, queuedVideoId);
+                if (!TextUtils.isEmpty(currentPlaylistId)) {
+                    playlistIdField.set(descriptorBuilder, currentPlaylistId);
+                }
+                Object queuedDescriptor = descriptorBuilder.getClass().getMethod("a")
+                        .invoke(descriptorBuilder);
+                clearPlaybackQueuePlaylistIndex(queuedDescriptor);
+                itemsToInsert.add(createPlaybackQueueItem(activeItem.getClass(), queuedDescriptor));
+                insertionIndex = activeIndex + 1;
             }
 
-            queueItemConstructor.setAccessible(true);
-            Object queuedItem = queueItemConstructor.newInstance(UUID.randomUUID(), queuedDescriptor);
-            insertItemsMethod.invoke(queue, 0, activeIndex + 1,
-                    Collections.singletonList(queuedItem));
-            int insertedIndex = activeIndex + 1;
+            insertItemsMethod.invoke(queue, 0, insertionIndex, itemsToInsert);
             Logger.printDebug(() -> "Added video to the live playback queue at index "
-                    + insertedIndex);
+                    + insertionIndex);
             return true;
         } catch (Exception ex) {
             Logger.printException(() -> "Could not add video to the live playback queue", ex);
             return false;
         }
+    }
+
+    private static Object createPlaybackQueueDescriptor(Method getItemMethod,
+                                                        String videoId,
+                                                        String currentPlaylistId) {
+        try {
+            Class<?> descriptorClass = getItemMethod.getReturnType().getMethod("a").getReturnType();
+            Class<?> builderClass = descriptorClass.getMethod("f").getReturnType();
+            Constructor<?> builderConstructor = builderClass.getDeclaredConstructor();
+            builderConstructor.setAccessible(true);
+            Object descriptorBuilder = builderConstructor.newInstance();
+
+            // YouTube's descriptor builder requires its local protobuf to be present before
+            // accepting the video and playlist IDs.
+            Field protoBuilderField = builderClass.getField("q");
+            Object emptyProto = protoBuilderField.getType().getField("a").get(null);
+            protoBuilderField.set(descriptorBuilder, emptyProto);
+            builderClass.getField("r").set(descriptorBuilder, videoId);
+            if (!TextUtils.isEmpty(currentPlaylistId)) {
+                builderClass.getField("s").set(descriptorBuilder, currentPlaylistId);
+            }
+
+            Object descriptor = builderClass.getMethod("a").invoke(descriptorBuilder);
+            clearPlaybackQueuePlaylistIndex(descriptor);
+            return descriptor;
+        } catch (Exception ex) {
+            Logger.printException(() -> "Could not create a playback queue descriptor", ex);
+            return null;
+        }
+    }
+
+    private static void clearPlaybackQueuePlaylistIndex(Object descriptor) throws Exception {
+        Field protoField = descriptor.getClass().getField("a");
+        Object playbackProto = protoField.get(descriptor);
+        Field playlistIndexField = playbackProto.getClass().getField("g");
+        Field presenceBitsField = playbackProto.getClass().getField("b");
+        playlistIndexField.setInt(playbackProto, 0);
+        presenceBitsField.setInt(playbackProto, presenceBitsField.getInt(playbackProto) & ~4);
+    }
+
+    private static Object createPlaybackQueueItem(Class<?> itemClass, Object descriptor)
+            throws Exception {
+        for (Constructor<?> constructor : itemClass.getDeclaredConstructors()) {
+            Class<?>[] parameterTypes = constructor.getParameterTypes();
+            if (parameterTypes.length == 2
+                    && parameterTypes[0] == UUID.class
+                    && parameterTypes[1].isInstance(descriptor)) {
+                constructor.setAccessible(true);
+                return constructor.newInstance(UUID.randomUUID(), descriptor);
+            }
+        }
+        throw new NoSuchMethodException("Could not find a constructor for YouTube's playback queue item");
     }
 
     private static Object findLiveQueue(Object queueManager) {
