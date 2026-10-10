@@ -277,6 +277,98 @@ public class PlaylistPatch {
         });
     }
 
+    private static void addToQueue(Context context, boolean openPlaylist,
+                                   boolean openVideo, boolean reload) {
+        String queuedVideoId = videoId;
+        String playingVideoId = VideoInformation.getVideoId();
+        if (queuedVideoId.isEmpty() || playingVideoId.isEmpty()
+                || PlayerType.getCurrent().isNoneOrHidden()) {
+            fetchQueue(context, false, openPlaylist, openVideo, reload, true);
+            return;
+        }
+
+        Utils.runOnBackgroundThread(() -> {
+            synchronized (lastVideoIds) {
+                String currentPlaylistId = playlistId;
+                boolean currentVideoWasBound = !currentPlaylistId.isEmpty()
+                        && currentPlaylistId.equals(VideoInformation.getPlaylistId());
+
+                if (!currentPlaylistId.isEmpty()
+                        && (!lastVideoIds.containsKey(playingVideoId)
+                        || !lastVideoIds.containsKey(queuedVideoId))) {
+                    Map<String, String> items = GetPlaylistItemsRequest.fetch(
+                            currentPlaylistId, AuthUtils.getRequestHeader());
+                    if (items == null) {
+                        if (!lastVideoIds.isEmpty()) {
+                            showToast(fetchFailedAdd);
+                            return;
+                        }
+                    } else {
+                        lastVideoIds.putAll(items);
+                    }
+                }
+
+                boolean creatingQueue = playlistId.isEmpty();
+                if (!ensureVideoInQueue(playingVideoId)) {
+                    showToast(creatingQueue ? fetchFailedCreate : fetchFailedAdd);
+                    return;
+                }
+                if (!queuedVideoId.equals(playingVideoId)
+                        && !ensureVideoInQueue(queuedVideoId)) {
+                    showToast(fetchFailedAdd);
+                    return;
+                }
+
+                showToast(creatingQueue ? fetchSucceededCreate : fetchSucceededAdd);
+                if (openPlaylist && !openVideo) {
+                    openQueue(context);
+                } else if (openVideo) {
+                    openQueue(context, queuedVideoId, true, reload);
+                } else if (reload || !currentVideoWasBound) {
+                    // YouTube only advances through a playlist after the active video is
+                    // opened with that playlist attached.
+                    openQueue(context, playingVideoId, true, true);
+                }
+            }
+        });
+    }
+
+    private static boolean ensureVideoInQueue(String targetVideoId) {
+        if (targetVideoId.isEmpty() || lastVideoIds.containsKey(targetVideoId)) {
+            return !targetVideoId.isEmpty();
+        }
+
+        String currentPlaylistId = playlistId;
+        if (currentPlaylistId.isEmpty()) {
+            CreatePlaylistRequest.fetchRequestIfNeeded(targetVideoId, AuthUtils.getRequestHeader());
+            CreatePlaylistRequest request = CreatePlaylistRequest.getRequestForVideoId(targetVideoId);
+            Pair<String, String> playlistIds = request == null ? null : request.getPlaylistId();
+            if (playlistIds == null || playlistIds.getFirst() == null
+                    || playlistIds.getSecond() == null) {
+                return false;
+            }
+
+            playlistId = playlistIds.getFirst();
+            if (Settings.QUEUE_RESTORE.get()) {
+                Settings.QUEUE_PLAYLIST_ID.save(playlistId);
+            }
+            lastVideoIds.putIfAbsent(targetVideoId, playlistIds.getSecond());
+            return true;
+        }
+
+        EditPlaylistRequest.fetchRequestIfNeeded(targetVideoId, currentPlaylistId,
+                null, AuthUtils.getRequestHeader());
+        EditPlaylistRequest request = EditPlaylistRequest.getRequestForVideoId(targetVideoId);
+        String setVideoId = request == null ? null : request.getResult();
+        if (setVideoId == null || setVideoId.isEmpty()) {
+            return false;
+        }
+
+        lastVideoIds.putIfAbsent(targetVideoId, setVideoId);
+        EditPlaylistRequest.clearVideoId(targetVideoId);
+        return true;
+    }
+
     private static void saveToPlaylist(Context context) {
         String currentPlaylistId = playlistId;
         if (currentPlaylistId.isEmpty()) {
@@ -416,7 +508,7 @@ public class PlaylistPatch {
                 "yt_outline_list_add_black_24",
                 "yt_outline_experimental_playlist_add_vd_theme_24",
                 context -> {
-                    fetchQueue(context, false, false, false, false, true);
+                    addToQueue(context, false, false, false);
                     return null;
                 }
         ),
@@ -425,7 +517,7 @@ public class PlaylistPatch {
                 "yt_outline_list_add_black_24",
                 "yt_outline_experimental_playlist_add_vd_theme_24",
                 context -> {
-                    fetchQueue(context, false, true, false, false, true);
+                    addToQueue(context, true, false, false);
                     return null;
                 }
         ),
@@ -434,7 +526,7 @@ public class PlaylistPatch {
                 "yt_outline_list_play_arrow_black_24",
                 "yt_outline_experimental_playlist_vd_theme_24",
                 context -> {
-                    fetchQueue(context, false, true, true, false, true);
+                    addToQueue(context, true, true, false);
                     return null;
                 }
         ),
@@ -443,7 +535,7 @@ public class PlaylistPatch {
                 "yt_outline_arrow_circle_black_24",
                 "yt_outline_experimental_replay_vd_theme_24",
                 context -> {
-                    fetchQueue(context, false, true, true, true, true);
+                    addToQueue(context, true, true, true);
                     return null;
                 }
         ),
