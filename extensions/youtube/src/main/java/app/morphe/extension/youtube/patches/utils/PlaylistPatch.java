@@ -26,19 +26,9 @@ import org.apache.commons.collections4.BidiMap;
 import org.apache.commons.collections4.bidimap.DualHashBidiMap;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.ref.WeakReference;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.Collection;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 import app.morphe.extension.shared.Logger;
@@ -86,7 +76,6 @@ public class PlaylistPatch {
             : Settings.QUEUE_PLAYLIST_ID.resetToDefault();
     private static volatile String videoId = "";
     private static volatile boolean syncStarted;
-    private static volatile WeakReference<Object> playbackQueueManagerRef = new WeakReference<>(null);
 
     @GuardedBy("itself")
     private static final BidiMap<String, String> lastVideoIds = new DualHashBidiMap<>();
@@ -130,16 +119,6 @@ public class PlaylistPatch {
         if (!playlistId.isEmpty() && !syncStarted && !AuthUtils.isNotLoggedIn()) {
             syncStarted = true;
             syncPlaylistItems();
-        }
-    }
-
-    /**
-     * Injection point for YouTube's playback queue manager. The manager is owned by the active
-     * player and lets us add videos to the live queue without reopening the current watch URL.
-     */
-    public static void initializePlaybackQueueManager(Object queueManager) {
-        if (queueManager != null) {
-            playbackQueueManagerRef = new WeakReference<>(queueManager);
         }
     }
 
@@ -312,9 +291,6 @@ public class PlaylistPatch {
         Utils.runOnBackgroundThread(() -> {
             synchronized (lastVideoIds) {
                 String currentPlaylistId = playlistId;
-                boolean currentVideoWasBound = !currentPlaylistId.isEmpty()
-                        && currentPlaylistId.equals(VideoInformation.getPlaylistId());
-
                 if (!currentPlaylistId.isEmpty()
                         && (!lastVideoIds.containsKey(playingVideoId)
                         || !lastVideoIds.containsKey(queuedVideoId))) {
@@ -343,7 +319,6 @@ public class PlaylistPatch {
                     EditPlaylistRequest.clear();
                     CreatePlaylistRequest.clear();
                     creatingQueue = true;
-                    currentVideoWasBound = false;
                     if (!createQueueWithVideos(playingVideoId, queuedVideoId)) {
                         showToast(fetchFailedCreate);
                         return;
@@ -357,268 +332,14 @@ public class PlaylistPatch {
                     openQueue(context, queuedVideoId, true, reload);
                 } else if (reload) {
                     openQueue(context, playingVideoId, true, true);
-                } else if (!addVideoToLivePlaybackQueue(
-                        playingVideoId,
-                        queuedVideoId,
-                        playlistId)) {
-                    // Preserve the reload fallback unless it is disabled for live queue testing.
-                    if (!currentVideoWasBound && !Settings.QUEUE_DISABLE_RELOAD_FALLBACK.get()) {
-                        openQueue(context, playingVideoId, true, true);
-                    } else {
-                        showToast(fetchFailedAdd);
-                    }
+                } else {
+                    // Mutating YouTube's reflected queue object did not update the active
+                    // playback sequence. Reopen the current watch URL with the Morphe playlist
+                    // through YouTube's internal activity so native playlist playback takes over.
+                    openQueue(context, playingVideoId, true, true);
                 }
             }
         });
-    }
-
-    private static boolean addVideoToLivePlaybackQueue(String playingVideoId,
-                                                       String queuedVideoId,
-                                                       String currentPlaylistId) {
-        if (Utils.isCurrentlyOnMainThread()) {
-            return insertVideoIntoLivePlaybackQueue(playingVideoId, queuedVideoId, currentPlaylistId);
-        }
-
-        AtomicBoolean result = new AtomicBoolean();
-        CountDownLatch completed = new CountDownLatch(1);
-        Utils.runOnMainThreadNowOrLater(() -> {
-            try {
-                result.set(insertVideoIntoLivePlaybackQueue(
-                        playingVideoId, queuedVideoId, currentPlaylistId));
-            } finally {
-                completed.countDown();
-            }
-        });
-        try {
-            return completed.await(2, TimeUnit.SECONDS) && result.get();
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            Logger.printException(() -> "Interrupted while updating the live playback queue", ex);
-            return false;
-        }
-    }
-
-    private static boolean insertVideoIntoLivePlaybackQueue(String playingVideoId,
-                                                            String queuedVideoId,
-                                                            String currentPlaylistId) {
-        Object queueManager = playbackQueueManagerRef.get();
-        if (queueManager == null) {
-            Logger.printDebug(() -> "Playback queue manager is not available");
-            return false;
-        }
-
-        try {
-            Object queue = findLiveQueue(queueManager, playingVideoId);
-            if (queue == null) {
-                Logger.printDebug(() -> "Live playback queue is not available");
-                return false;
-            }
-
-            Method sizeMethod = queue.getClass().getMethod("i", int.class);
-            Method getItemMethod = queue.getClass().getMethod("B", int.class, int.class);
-            Method insertItemsMethod = queue.getClass().getMethod(
-                    "n", int.class, int.class, Collection.class);
-
-            int itemCount = (int) sizeMethod.invoke(queue, 0);
-            int activeIndex = -1;
-            Object activeItem = null;
-            Method getDescriptorMethod = null;
-            int playbackIndex = (int) queue.getClass().getMethod("j").invoke(queue);
-
-            for (int index = 0; index < itemCount; index++) {
-                Object item = getItemMethod.invoke(queue, 0, index);
-                Method itemDescriptorMethod = item.getClass().getMethod("a");
-                Object descriptor = itemDescriptorMethod.invoke(item);
-                Method videoIdMethod = descriptor.getClass().getMethod("v");
-                String itemVideoId = (String) videoIdMethod.invoke(descriptor);
-
-                if (queuedVideoId.equals(itemVideoId)) {
-                    Logger.printDebug(() -> "Video is already in the live playback queue");
-                    return true;
-                }
-                if (playingVideoId.equals(itemVideoId)) {
-                    activeIndex = index;
-                    activeItem = item;
-                    getDescriptorMethod = itemDescriptorMethod;
-                }
-            }
-
-            // The queue reports its active entry directly. Its descriptor can lag behind
-            // VideoInformation while YouTube is transitioning between items, so prefer this
-            // index over matching the current video ID when it is valid.
-            if (playbackIndex >= 0 && playbackIndex < itemCount) {
-                activeIndex = playbackIndex;
-                activeItem = getItemMethod.invoke(queue, 0, activeIndex);
-                getDescriptorMethod = activeItem.getClass().getMethod("a");
-                Object playbackDescriptor = getDescriptorMethod.invoke(activeItem);
-                String playbackVideoId = (String) playbackDescriptor.getClass()
-                        .getMethod("v").invoke(playbackDescriptor);
-                if (!playingVideoId.equals(playbackVideoId)) {
-                    Logger.printDebug(() -> "Using active playback queue index " + playbackIndex
-                            + " for video " + playbackVideoId
-                            + " while player reports " + playingVideoId);
-                }
-            }
-
-            List<Object> itemsToInsert = new ArrayList<>(2);
-            int insertionIndex;
-            if (activeIndex < 0 || activeItem == null) {
-                Logger.printDebug(() -> "No active entry in the live playback queue"
-                        + " (items=" + itemCount + ", playbackIndex=" + playbackIndex
-                        + "); seeding it with the playing and queued videos");
-                Object currentDescriptor = createPlaybackQueueDescriptor(
-                        getItemMethod, playingVideoId, currentPlaylistId);
-                Object queuedDescriptor = createPlaybackQueueDescriptor(
-                        getItemMethod, queuedVideoId, currentPlaylistId);
-                if (currentDescriptor == null || queuedDescriptor == null) {
-                    return false;
-                }
-                itemsToInsert.add(createPlaybackQueueItem(
-                        getItemMethod.getReturnType(), currentDescriptor));
-                itemsToInsert.add(createPlaybackQueueItem(
-                        getItemMethod.getReturnType(), queuedDescriptor));
-                insertionIndex = 0;
-            } else {
-                Object activeDescriptor = getDescriptorMethod.invoke(activeItem);
-                Object descriptorBuilder = activeDescriptor.getClass().getMethod("f")
-                        .invoke(activeDescriptor);
-                Field videoIdField = descriptorBuilder.getClass().getField("r");
-                Field playlistIdField = descriptorBuilder.getClass().getField("s");
-                videoIdField.set(descriptorBuilder, queuedVideoId);
-                if (!TextUtils.isEmpty(currentPlaylistId)) {
-                    playlistIdField.set(descriptorBuilder, currentPlaylistId);
-                }
-                Object queuedDescriptor = descriptorBuilder.getClass().getMethod("a")
-                        .invoke(descriptorBuilder);
-                clearPlaybackQueuePlaylistIndex(queuedDescriptor);
-                itemsToInsert.add(createPlaybackQueueItem(activeItem.getClass(), queuedDescriptor));
-                insertionIndex = activeIndex + 1;
-            }
-
-            insertItemsMethod.invoke(queue, 0, insertionIndex, itemsToInsert);
-            Logger.printDebug(() -> "Added video to the live playback queue at index "
-                    + insertionIndex);
-            return true;
-        } catch (Exception ex) {
-            Logger.printException(() -> "Could not add video to the live playback queue", ex);
-            return false;
-        }
-    }
-
-    private static Object createPlaybackQueueDescriptor(Method getItemMethod,
-                                                        String videoId,
-                                                        String currentPlaylistId) {
-        try {
-            Class<?> descriptorClass = getItemMethod.getReturnType().getMethod("a").getReturnType();
-            Class<?> builderClass = descriptorClass.getMethod("f").getReturnType();
-            Constructor<?> builderConstructor = builderClass.getDeclaredConstructor();
-            builderConstructor.setAccessible(true);
-            Object descriptorBuilder = builderConstructor.newInstance();
-
-            // YouTube's descriptor builder requires its local protobuf to be present before
-            // accepting the video and playlist IDs.
-            Field protoBuilderField = builderClass.getField("q");
-            Object emptyProto = protoBuilderField.getType().getField("a").get(null);
-            protoBuilderField.set(descriptorBuilder, emptyProto);
-            builderClass.getField("r").set(descriptorBuilder, videoId);
-            if (!TextUtils.isEmpty(currentPlaylistId)) {
-                builderClass.getField("s").set(descriptorBuilder, currentPlaylistId);
-            }
-
-            Object descriptor = builderClass.getMethod("a").invoke(descriptorBuilder);
-            clearPlaybackQueuePlaylistIndex(descriptor);
-            return descriptor;
-        } catch (Exception ex) {
-            Logger.printException(() -> "Could not create a playback queue descriptor", ex);
-            return null;
-        }
-    }
-
-    private static void clearPlaybackQueuePlaylistIndex(Object descriptor) throws Exception {
-        Field protoField = descriptor.getClass().getField("a");
-        Object playbackProto = protoField.get(descriptor);
-        Field playlistIndexField = playbackProto.getClass().getField("g");
-        Field presenceBitsField = playbackProto.getClass().getField("b");
-        playlistIndexField.setInt(playbackProto, 0);
-        presenceBitsField.setInt(playbackProto, presenceBitsField.getInt(playbackProto) & ~4);
-    }
-
-    private static Object createPlaybackQueueItem(Class<?> itemClass, Object descriptor)
-            throws Exception {
-        for (Constructor<?> constructor : itemClass.getDeclaredConstructors()) {
-            Class<?>[] parameterTypes = constructor.getParameterTypes();
-            if (parameterTypes.length == 2
-                    && parameterTypes[0] == UUID.class
-                    && parameterTypes[1].isInstance(descriptor)) {
-                constructor.setAccessible(true);
-                return constructor.newInstance(UUID.randomUUID(), descriptor);
-            }
-        }
-        throw new NoSuchMethodException("Could not find a constructor for YouTube's playback queue item");
-    }
-
-    private static Object findLiveQueue(Object queueManager, String playingVideoId) {
-        Object bestCandidate = null;
-        int bestCandidateScore = -1;
-        int bestCandidateItemCount = -1;
-        for (Class<?> type = queueManager.getClass(); type != null; type = type.getSuperclass()) {
-            for (Field field : type.getDeclaredFields()) {
-                try {
-                    field.setAccessible(true);
-                    Object candidate = field.get(queueManager);
-                    if (candidate == null) {
-                        continue;
-                    }
-                    Class<?> candidateType = candidate.getClass();
-                    Method sizeMethod = candidateType.getMethod("i", int.class);
-                    Method activeIndexMethod = candidateType.getMethod("j");
-                    Method getItemMethod = candidateType.getMethod("B", int.class, int.class);
-                    candidateType.getMethod("n", int.class, int.class, Collection.class);
-
-                    int itemCount = (int) sizeMethod.invoke(candidate, 0);
-                    int activeIndex = (int) activeIndexMethod.invoke(candidate);
-                    boolean containsPlayingVideo = false;
-                    boolean activeItemIsPlayingVideo = false;
-                    for (int index = 0; index < itemCount; index++) {
-                        Object item = getItemMethod.invoke(candidate, 0, index);
-                        String itemVideoId = getPlaybackQueueItemVideoId(item);
-                        if (playingVideoId.equals(itemVideoId)) {
-                            containsPlayingVideo = true;
-                            activeItemIsPlayingVideo = activeIndex == index;
-                        }
-                    }
-
-                    int score = activeItemIsPlayingVideo ? 4
-                            : containsPlayingVideo ? 3
-                            : activeIndex >= 0 && activeIndex < itemCount ? 2
-                            : itemCount == 0 ? 1
-                            : 0;
-                    if (score > bestCandidateScore
-                            || score == bestCandidateScore && itemCount > bestCandidateItemCount) {
-                        bestCandidate = candidate;
-                        bestCandidateScore = score;
-                        bestCandidateItemCount = itemCount;
-                    }
-                } catch (Exception ignored) {
-                    // Try the next field. Most manager fields are unrelated to the video queue.
-                }
-            }
-        }
-        Object selectedCandidate = bestCandidate;
-        int selectedCandidateScore = bestCandidateScore;
-        int selectedCandidateItemCount = bestCandidateItemCount;
-        if (selectedCandidate != null) {
-            Logger.printDebug(() -> "Selected live playback queue "
-                    + selectedCandidate.getClass().getName()
-                    + " with match score " + selectedCandidateScore
-                    + " and " + selectedCandidateItemCount + " items");
-        }
-        return selectedCandidate;
-    }
-
-    private static String getPlaybackQueueItemVideoId(Object item) throws Exception {
-        Object descriptor = item.getClass().getMethod("a").invoke(item);
-        return (String) descriptor.getClass().getMethod("v").invoke(descriptor);
     }
 
     private static boolean createQueueWithVideos(String firstVideoId, String secondVideoId) {
@@ -772,7 +493,6 @@ public class PlaylistPatch {
                 return;
             }
             try {
-                String url;
                 if (openVideo) {
                     if (TextUtils.isEmpty(currentVideoId)) {
                         handleCheckError(checkFailedVideoId);
@@ -780,24 +500,25 @@ public class PlaylistPatch {
                     }
                     if (reload) {
                         final long videoTime = VideoInformation.getVideoTime();
-
-                        url = "https://www.youtube.com/watch?v=" +
-                                VideoInformation.getVideoId() +
-                                "&list=" +
-                                currentPlaylistId +
-                                (videoTime > 0 ? "&t=" + (videoTime / 1000) : "");
+                        String videoWithPlaylist = VideoInformation.getVideoId()
+                                + "?list=" + currentPlaylistId
+                                + (videoTime > 0 ? "&t=" + (videoTime / 1000) + "s" : "");
+                        // Reuse YouTube's in-app watch route. Unlike the external VIEW intent,
+                        // this does not dismiss the player first, which can force the mini-player
+                        // back into fullscreen during the reload.
+                        LoadVideoPatch.openVideoIntentWithInternalContext(videoWithPlaylist);
                     } else {
-                        url = "https://www.youtube.com/watch?v=" +
+                        String url = "https://www.youtube.com/watch?v=" +
                                 currentVideoId +
                                 "&list=" +
                                 currentPlaylistId;
+                        LoadVideoPatch.openVideoIntent(url, false);
                     }
                 } else {
-                    url = "https://www.youtube.com/playlist?list=" +
+                    String url = "https://www.youtube.com/playlist?list=" +
                             currentPlaylistId;
+                    LoadVideoPatch.openVideoIntent(url, false);
                 }
-
-                LoadVideoPatch.openVideoIntent(url, reload);
             } catch (Exception ex) {
                 Logger.printException(() -> "openQueue failure", ex);
             }

@@ -30,9 +30,6 @@ import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 private const val EXTENSION_CLASS =
     "Lapp/morphe/extension/youtube/patches/AddToQueuePatch;"
 
-private const val PLAYLIST_EXTENSION_CLASS =
-    "Lapp/morphe/extension/youtube/patches/utils/PlaylistPatch;"
-
 @Suppress("unused")
 val addToQueuePatch = bytecodePatch(
     name = "Add to queue",
@@ -50,17 +47,10 @@ val addToQueuePatch = bytecodePatch(
     compatibleWith(COMPATIBILITY_YOUTUBE)
 
     execute {
-        val playbackQueueConstructor = PlaybackQueueControllerConstructorFingerprint.method
-        playbackQueueConstructor.addInstruction(
-            playbackQueueConstructor.implementation!!.instructions.lastIndex,
-            "invoke-static { p5 }, $PLAYLIST_EXTENSION_CLASS->initializePlaybackQueueManager(Ljava/lang/Object;)V"
-        )
-
         PreferenceScreen.FEED.addPreferences(
             noTitleUnsortedPreferenceCategory(
                 SwitchPreference("morphe_queue_override_flyout_menu", summary = true),
-                SwitchPreference("morphe_queue_add_flyout_menu", summary = true),
-                SwitchPreference("morphe_queue_disable_reload_fallback", summary = true)
+                SwitchPreference("morphe_queue_add_flyout_menu", summary = true)
             )
         )
 
