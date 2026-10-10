@@ -408,7 +408,7 @@ public class PlaylistPatch {
         }
 
         try {
-            Object queue = findLiveQueue(queueManager);
+            Object queue = findLiveQueue(queueManager, playingVideoId);
             if (queue == null) {
                 Logger.printDebug(() -> "Live playback queue is not available");
                 return false;
@@ -557,7 +557,10 @@ public class PlaylistPatch {
         throw new NoSuchMethodException("Could not find a constructor for YouTube's playback queue item");
     }
 
-    private static Object findLiveQueue(Object queueManager) {
+    private static Object findLiveQueue(Object queueManager, String playingVideoId) {
+        Object bestCandidate = null;
+        int bestCandidateScore = -1;
+        int bestCandidateItemCount = -1;
         for (Class<?> type = queueManager.getClass(); type != null; type = type.getSuperclass()) {
             for (Field field : type.getDeclaredFields()) {
                 try {
@@ -567,17 +570,55 @@ public class PlaylistPatch {
                         continue;
                     }
                     Class<?> candidateType = candidate.getClass();
-                    candidateType.getMethod("i", int.class);
-                    candidateType.getMethod("j");
-                    candidateType.getMethod("B", int.class, int.class);
+                    Method sizeMethod = candidateType.getMethod("i", int.class);
+                    Method activeIndexMethod = candidateType.getMethod("j");
+                    Method getItemMethod = candidateType.getMethod("B", int.class, int.class);
                     candidateType.getMethod("n", int.class, int.class, Collection.class);
-                    return candidate;
+
+                    int itemCount = (int) sizeMethod.invoke(candidate, 0);
+                    int activeIndex = (int) activeIndexMethod.invoke(candidate);
+                    boolean containsPlayingVideo = false;
+                    boolean activeItemIsPlayingVideo = false;
+                    for (int index = 0; index < itemCount; index++) {
+                        Object item = getItemMethod.invoke(candidate, 0, index);
+                        String itemVideoId = getPlaybackQueueItemVideoId(item);
+                        if (playingVideoId.equals(itemVideoId)) {
+                            containsPlayingVideo = true;
+                            activeItemIsPlayingVideo = activeIndex == index;
+                        }
+                    }
+
+                    int score = activeItemIsPlayingVideo ? 4
+                            : containsPlayingVideo ? 3
+                            : activeIndex >= 0 && activeIndex < itemCount ? 2
+                            : itemCount == 0 ? 1
+                            : 0;
+                    if (score > bestCandidateScore
+                            || score == bestCandidateScore && itemCount > bestCandidateItemCount) {
+                        bestCandidate = candidate;
+                        bestCandidateScore = score;
+                        bestCandidateItemCount = itemCount;
+                    }
                 } catch (Exception ignored) {
                     // Try the next field. Most manager fields are unrelated to the video queue.
                 }
             }
         }
-        return null;
+        Object selectedCandidate = bestCandidate;
+        int selectedCandidateScore = bestCandidateScore;
+        int selectedCandidateItemCount = bestCandidateItemCount;
+        if (selectedCandidate != null) {
+            Logger.printDebug(() -> "Selected live playback queue "
+                    + selectedCandidate.getClass().getName()
+                    + " with match score " + selectedCandidateScore
+                    + " and " + selectedCandidateItemCount + " items");
+        }
+        return selectedCandidate;
+    }
+
+    private static String getPlaybackQueueItemVideoId(Object item) throws Exception {
+        Object descriptor = item.getClass().getMethod("a").invoke(item);
+        return (String) descriptor.getClass().getMethod("v").invoke(descriptor);
     }
 
     private static boolean createQueueWithVideos(String firstVideoId, String secondVideoId) {
