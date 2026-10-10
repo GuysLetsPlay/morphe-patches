@@ -361,9 +361,8 @@ public class PlaylistPatch {
                         playingVideoId,
                         queuedVideoId,
                         playlistId)) {
-                    // Preserve the old behavior on YouTube builds where the in-memory playback
-                    // queue could not be found or updated.
-                    if (!currentVideoWasBound) {
+                    // Preserve the reload fallback unless it is disabled for live queue testing.
+                    if (!currentVideoWasBound && !Settings.QUEUE_DISABLE_RELOAD_FALLBACK.get()) {
                         openQueue(context, playingVideoId, true, true);
                     } else {
                         showToast(fetchFailedAdd);
