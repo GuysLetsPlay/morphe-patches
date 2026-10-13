@@ -1363,6 +1363,10 @@ Videos are requested by a short prefix of the hashed video ID, so the server can
     <string name="morphe_external_browser_title">Open links in browser</string>
     <string name="morphe_external_browser_summary">Opens links in an external browser instead of the in-app browser</string>
 
+    <!-- misc.twitch.twitchPlaybackPrototypePatch -->
+    <string name="morphe_twitch_title">Twitch</string>
+    <string name="morphe_twitch_summary">Experimental Following page for testing live streams and VOD playback</string>
+
     <!-- video.buffer.playbackBufferPatch -->
     <string name="morphe_playback_buffer_size_title">Playback buffer size</string>
     <string name="morphe_playback_buffer_size_entry_default">Default</string>

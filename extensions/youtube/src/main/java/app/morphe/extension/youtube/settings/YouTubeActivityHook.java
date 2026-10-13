@@ -25,9 +25,12 @@ import app.morphe.extension.shared.Utils;
 import app.morphe.extension.shared.settings.BaseActivityHook;
 import app.morphe.extension.shared.settings.SharedYouTubeSettings;
 import app.morphe.extension.shared.spoof.SpoofAppVersionPatch;
+import app.morphe.extension.youtube.twitch.TwitchBrowserFragment;
 import app.morphe.extension.youtube.patches.VersionCheckPatch;
 import app.morphe.extension.youtube.settings.preference.YouTubePreferenceFragment;
 import app.morphe.extension.youtube.settings.search.YouTubeSearchViewController;
+
+import static app.morphe.extension.shared.StringRef.str;
 
 /**
  * Hooks {@link GoogleApiActivity} to inject a custom {@link YouTubePreferenceFragment}
@@ -101,6 +104,9 @@ public class YouTubeActivityHook extends BaseActivityHook {
     @Override
     protected View.OnClickListener getNavigationClickListener(Activity activity) {
         return view -> {
+            if (TwitchBrowserFragment.handleBackPress()) {
+                return;
+            }
             if (searchViewController != null && searchViewController.isSearchActive()) {
                 searchViewController.handleBackPress();
             } else {
@@ -118,6 +124,10 @@ public class YouTubeActivityHook extends BaseActivityHook {
      */
     @Override
     protected void onPostToolbarSetup(Activity activity, Toolbar toolbar, PreferenceFragment fragment) {
+        if (fragment instanceof TwitchBrowserFragment) {
+            toolbar.setTitle(str("morphe_twitch_title"));
+            return;
+        }
         if (fragment instanceof YouTubePreferenceFragment) {
             searchViewController = YouTubeSearchViewController.addSearchViewComponents(
                     activity, toolbar, (YouTubePreferenceFragment) fragment);
@@ -130,6 +140,14 @@ public class YouTubeActivityHook extends BaseActivityHook {
     @Override
     protected PreferenceFragment createPreferenceFragment() {
         return new YouTubePreferenceFragment();
+    }
+
+    @Override
+    protected PreferenceFragment createPreferenceFragment(Activity activity) {
+        if (MORPHE_TWITCH_INTENT.equals(activity.getIntent().getDataString())) {
+            return new TwitchBrowserFragment();
+        }
+        return super.createPreferenceFragment(activity);
     }
 
     /**
@@ -183,6 +201,9 @@ public class YouTubeActivityHook extends BaseActivityHook {
      */
     @SuppressWarnings("unused")
     public static boolean handleBackPress() {
+        if (TwitchBrowserFragment.handleBackPress()) {
+            return true;
+        }
         if (searchViewController != null && searchViewController.isSearchActive()) {
             return searchViewController.handleBackPress();
         }

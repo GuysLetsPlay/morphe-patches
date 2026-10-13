@@ -40,6 +40,11 @@ public abstract class BaseActivityHook extends Activity {
 
     public static final String MORPHE_SETTINGS_INTENT = "morphe_settings_intent";
     public static final String MORPHE_DOWNLOADS_INTENT = "morphe_downloads_intent";
+    /**
+     * Opens the in-app Twitch playback prototype. This deliberately uses the existing
+     * injection activity because patched applications cannot safely declare new activities.
+     */
+    public static final String MORPHE_TWITCH_INTENT = "morphe_twitch_intent";
     private static final int ID_MORPHE_SETTINGS_FRAGMENTS =
             ResourceUtils.getIdentifierOrThrow(ResourceType.ID, "morphe_settings_fragments");
     private static final int ID_MORPHE_TOOLBAR_PARENT =
@@ -78,7 +83,8 @@ public abstract class BaseActivityHook extends Activity {
             // Sanity check.
             String dataString = activity.getIntent().getDataString();
             if (!MORPHE_SETTINGS_INTENT.equals(dataString)
-                    && !MORPHE_DOWNLOADS_INTENT.equals(dataString)) {
+                    && !MORPHE_DOWNLOADS_INTENT.equals(dataString)
+                    && !MORPHE_TWITCH_INTENT.equals(dataString)) {
                 Logger.printException(() -> "Unknown intent: " + dataString);
                 return;
             }
@@ -91,7 +97,7 @@ public abstract class BaseActivityHook extends Activity {
                 );
             }
 
-            PreferenceFragment fragment = hook.createPreferenceFragment();
+            PreferenceFragment fragment = hook.createPreferenceFragment(activity);
             hook.createToolbar(activity, fragment);
 
             activity.getFragmentManager()
@@ -185,6 +191,14 @@ public abstract class BaseActivityHook extends Activity {
      */
     protected PreferenceFragment createPreferenceFragment() {
         return new ToolbarPreferenceFragment();
+    }
+
+    /**
+     * Creates the fragment hosted by the injection activity. Subclasses may select a
+     * specialised fragment based on the launching intent.
+     */
+    protected PreferenceFragment createPreferenceFragment(Activity activity) {
+        return createPreferenceFragment();
     }
 
     /**
