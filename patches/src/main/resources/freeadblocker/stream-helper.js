@@ -6,62 +6,6 @@ function startOptiSubFrameWebPage(_url) {
   const playlists = new Map();
   const masterAnalyses = new Map();
 
-  function animePlaybackMetadata() {
-    // Hoster pages such as VidMoly often include the anime and episode in their HTML title,
-    // even though the actual HLS URL is only named master.m3u8 or index.m3u8.
-    const releaseTitle = document.title?.trim();
-    const releaseMatch = releaseTitle?.match(/^(.+?)\s+S(\d{1,2})\s*E(\d{1,3})\b/i);
-    if (releaseMatch) {
-      const canonicalTitle = releaseMatch[1].replace(/[\s._-]+$/, "").trim();
-      const season = Number(releaseMatch[2]);
-      const episode = Number(releaseMatch[3]);
-      if (canonicalTitle && !/^(vidmoly|voe|doodstream|filemoon)$/i.test(canonicalTitle) && season > 0 && episode > 0) {
-        return {
-          canonicalTitle,
-          season,
-          episode,
-          playbackTitle: `${canonicalTitle} - S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`
-        };
-      }
-    }
-
-    const candidates = [document.referrer, _url, location.href];
-    for (const candidate of candidates) {
-      if (!candidate) continue;
-      let page;
-      try { page = new URL(candidate, location.href); } catch { continue; }
-      const hostname = page.hostname.toLowerCase();
-      if (hostname !== "aniworld.to" && !hostname.endsWith(".aniworld.to")) continue;
-
-      const match = page.pathname.match(/\/anime\/stream\/([^/]+)\/staffel-(\d+)\/episode-(\d+)(?:\/|$)/i);
-      if (!match) continue;
-
-      const onAniWorldPage = page.origin === location.origin;
-      const pageTitle = onAniWorldPage
-        ? document.querySelector(".series-title h1")?.textContent?.trim()
-          || document.querySelector('meta[property="og:site_name"]')?.content?.trim()
-        : "";
-      let animeTitle = pageTitle;
-      if (!animeTitle) {
-        try { animeTitle = decodeURIComponent(match[1]); } catch { animeTitle = match[1]; }
-        animeTitle = animeTitle.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
-        animeTitle = animeTitle.replace(/\b[a-z]/g, letter => letter.toUpperCase());
-      }
-
-      const season = Number(match[2]);
-      const episode = Number(match[3]);
-      if (!animeTitle || !Number.isInteger(season) || !Number.isInteger(episode) || season < 1 || episode < 1) continue;
-      return {
-        canonicalTitle: animeTitle,
-        season,
-        episode,
-        playbackTitle: `${animeTitle} - S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`
-      };
-    }
-
-    return null;
-  }
-
   function parsePlaylist(value) {
     if (typeof value !== "string" || !value) return null;
     try {
@@ -240,15 +184,7 @@ function startOptiSubFrameWebPage(_url) {
   }
   function intentFor(value) {
     const url = new URL(value);
-    const playbackMetadata = animePlaybackMetadata();
-    const extras = playbackMetadata ? [
-      `S.title=${encodeURIComponent(playbackMetadata.playbackTitle)}`,
-      `S.filename=${encodeURIComponent(playbackMetadata.playbackTitle)}`,
-      `S.introdb_title=${encodeURIComponent(playbackMetadata.canonicalTitle)}`,
-      `i.introdb_season=${playbackMetadata.season}`,
-      `i.introdb_episode=${playbackMetadata.episode}`
-    ].map(extra => `;${extra}`).join("") : "";
-    return `intent://${url.host}${url.pathname}${url.search}#Intent;scheme=${url.protocol.slice(0, -1)};package=${PLAYER_PACKAGE};type=application/vnd.apple.mpegurl${extras};end`;
+    return `intent://${url.host}${url.pathname}${url.search}#Intent;scheme=${url.protocol.slice(0, -1)};package=${PLAYER_PACKAGE};type=application/vnd.apple.mpegurl;end`;
   }
   function open(value) { window.location.href = intentFor(value); }
   async function copy(value) {
