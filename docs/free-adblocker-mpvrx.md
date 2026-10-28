@@ -7,7 +7,7 @@ This Morphe patch adds a stream picker to Free Adblocker Browser. On supported A
 1. Install MPV RX on the Android device.
 2. In Morphe Manager, select a **universal APK** for Free Adblocker Browser **139.1.4146** (`com.hsv.freeadblockerbrowser`, version code `2016124146`).
 3. Select **Open HLS streams in mpvRx** and build/install the patched app.
-4. Open a supported streaming page and start playback. Use the floating **Open ... in mpvRx** button. The adjacent menu lists detected quality variants and link-copy actions.
+4. Open a supported streaming page and start playback. The floating button remains visible while waiting for an HLS stream, then changes to **Open ... in mpvRx** when a playlist is detected. The adjacent menu lists detected quality variants and link-copy actions.
 
 The patch is pinned to the exact browser version tested. It edits the browser's existing encrypted video-script and host-list assets, so a later browser version needs its assets and host behavior checked before the target is expanded.
 

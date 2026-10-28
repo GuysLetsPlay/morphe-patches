@@ -260,10 +260,17 @@ function startOptiSubFrameWebPage(_url) {
   }
   function render() {
     const { state, choices } = getChoices();
-    controls.hidden = state === "empty";
-    openButton.disabled = state === "loading";
-    openButton.textContent = state === "loading" ? "Reading qualities…" : state === "ready" ? `Open ${qualityLabel(choices[0])} in mpvRx` : "Open in mpvRx · Auto";
+    controls.hidden = false;
+    openButton.disabled = state === "empty" || state === "loading";
+    openButton.textContent = state === "empty" ? "Waiting for HLS stream…" : state === "loading" ? "Reading qualities…" : state === "ready" ? `Open ${qualityLabel(choices[0])} in mpvRx` : "Open in mpvRx · Auto";
+    shadow.querySelector(".more").hidden = state === "empty";
     list.replaceChildren();
+    if (state === "empty") {
+      const status = document.createElement("div"); status.className = "row hint";
+      status.textContent = "No HLS playlist detected yet. Start the video and wait a moment.";
+      list.appendChild(status);
+      return;
+    }
     for (const [index, choice] of choices.entries()) {
       const row = document.createElement("div"); row.className = "row";
       const name = document.createElement("div"); name.className = "label";
