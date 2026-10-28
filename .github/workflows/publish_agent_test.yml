@@ -1,0 +1,106 @@
+name: Publish agent test bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch or commit in this repository to build
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout selected source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+          path: source
+          persist-credentials: false
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build patch bundle
+        working-directory: source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("patches/build.gradle.kts")
+          s = p.read_text(encoding="utf-8")
+          replacements = {
+              'name = "Morphe Patches"': 'name = "GuysLetsPlay Agent Test Patches"',
+              'description = "Patches for Morphe"': 'description = "Agent testing bundle"',
+              'source = "git@github.com:MorpheApp/morphe-patches.git"': 'source = "https://github.com/GuysLetsPlay/morphe-patches"',
+              'author = "MorpheApp"': 'author = "GuysLetsPlay"',
+              'website = "https://morphe.software"': 'website = "https://github.com/GuysLetsPlay/morphe-patches"',
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f"Expected metadata field missing: {old}")
+              s = s.replace(old, new, 1)
+          p.write_text(s, encoding="utf-8")
+          PY
+          ./gradlew :patches:buildAndroid --no-daemon
+
+      - name: Create immutable test release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle=$(find patches/build/libs -maxdepth 1 -type f -name 'patches-*.mpp' ! -name '*-sources.mpp' ! -name '*-javadoc.mpp' | head -n 1)
+          test -n "$bundle"
+          source_sha=$(git rev-parse HEAD)
+          tag="agent-test-${RUN_ID}"
+          file="agent-test-${RUN_ID}.mpp"
+          cp "$bundle" "$file"
+          gh release create "$tag" "$file" --repo "$GITHUB_REPOSITORY" --title "Agent test ${RUN_NUMBER} (${source_sha:0:7})" --notes "Automated test bundle built from ref: ${SOURCE_REF}\nCommit: ${source_sha}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "asset=$file" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout testing source branch
+        uses: actions/checkout@v4
+        with:
+          ref: agents-test
+          path: feed
+          token: ${{ github.token }}
+
+      - name: Update source manifest
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          ASSET: ${{ steps.release.outputs.asset }}
+          RUN_ID: ${{ github.run_id }}
+          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+        working-directory: feed
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="2026.10.${RUN_ID}"
+          cat > patches-bundle.json <<EOF
+          {
+            "created_at": "$(date -u +%Y-%m-%dT%H:%M:%S)",
+            "description": "Agent testing bundle built from ${SOURCE_SHA}",
+            "download_url": "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}",
+            "signature_download_url": "",
+            "version": "${version}"
+          }
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add patches-bundle.json
+          git commit -m "Publish agent test bundle ${version}"
+          git push origin HEAD:agents-test
