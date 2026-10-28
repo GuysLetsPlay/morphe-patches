@@ -1,7 +1,7 @@
-﻿{
-  "created_at": "2026-10-28T12:07:44Z",
-  "description": "Completed feature bundle built from 1c4e36faf79d5c7b969c20b7f204e",
-  "download_url": "https://github.com/GuysLetsPlay/morphe-patches/releases/download/agent-test-40684708868/agent-test-40684708868.mpp",
+{
+  "created_at": "2026-10-28T16:12:30",
+  "description": "Completed feature bundle built from 1c4e36fafd2d137de1aabb0cbe18e0d8f903f182",
+  "download_url": "https://github.com/GuysLetsPlay/morphe-patches/releases/download/feature-complete-40723166905/feature-complete-40723166905.mpp",
   "signature_download_url": "",
-  "version": "1.49.0-dev.10+complete.40684708868"
+  "version": "1.49.0-dev.10+complete.40723166905"
 }
