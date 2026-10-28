@@ -9,11 +9,16 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
+  packages: read
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
+    outputs:
+      source_sha: ${{ steps.bundle.outputs.source_sha }}
+      bundle_name: ${{ steps.bundle.outputs.name }}
+      bundle_version: ${{ steps.bundle.outputs.version }}
     steps:
       - name: Checkout selected source
         uses: actions/checkout@v4
@@ -30,6 +35,8 @@ jobs:
 
       - name: Build patch bundle
         working-directory: source
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -50,6 +57,42 @@ jobs:
           PY
           ./gradlew :patches:buildAndroid --no-daemon
 
+      - name: Prepare bundle artifact
+        id: bundle
+        working-directory: source
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          bundle=$(find patches/build/libs -maxdepth 1 -type f -name 'patches-*.mpp' ! -name '*-sources.mpp' ! -name '*-javadoc.mpp' | head -n 1)
+          test -n "$bundle"
+          file="agent-test-${RUN_ID}.mpp"
+          cp "$bundle" "$file"
+          echo "name=$file" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          version=$(sed -n 's/^version = *//p' gradle.properties | head -n 1)
+          test -n "$version"
+          echo "version=${version}+agent.${RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-test-bundle
+          path: source/${{ steps.bundle.outputs.name }}
+          if-no-files-found: error
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - name: Download bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-test-bundle
+          path: bundle
+
       - name: Create immutable test release
         id: release
         env:
@@ -57,20 +100,17 @@ jobs:
           SOURCE_REF: ${{ inputs.source_ref }}
           RUN_ID: ${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
-        working-directory: source
+          SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
+          BUNDLE_NAME: ${{ needs.build.outputs.bundle_name }}
         shell: bash
         run: |
           set -euo pipefail
-          bundle=$(find patches/build/libs -maxdepth 1 -type f -name 'patches-*.mpp' ! -name '*-sources.mpp' ! -name '*-javadoc.mpp' | head -n 1)
-          test -n "$bundle"
-          source_sha=$(git rev-parse HEAD)
           tag="agent-test-${RUN_ID}"
-          file="agent-test-${RUN_ID}.mpp"
-          cp "$bundle" "$file"
-          gh release create "$tag" "$file" --repo "$GITHUB_REPOSITORY" --title "Agent test ${RUN_NUMBER} (${source_sha:0:7})" --notes "Automated test bundle built from ref: ${SOURCE_REF}\nCommit: ${source_sha}"
+          file="$BUNDLE_NAME"
+          mv "bundle/$file" "$file"
+          gh release create "$tag" "$file" --repo "$GITHUB_REPOSITORY" --title "Agent test ${RUN_NUMBER} (${SOURCE_SHA:0:7})" --notes "Automated test bundle built from ref: ${SOURCE_REF}\nCommit: ${SOURCE_SHA}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "asset=$file" >> "$GITHUB_OUTPUT"
-          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
 
       - name: Checkout testing source branch
         uses: actions/checkout@v4
@@ -84,23 +124,23 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
           ASSET: ${{ steps.release.outputs.asset }}
           RUN_ID: ${{ github.run_id }}
-          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+          SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
+          VERSION: ${{ needs.build.outputs.bundle_version }}
         working-directory: feed
         shell: bash
         run: |
           set -euo pipefail
-          version="2026.10.${RUN_ID}"
           cat > patches-bundle.json <<EOF
           {
             "created_at": "$(date -u +%Y-%m-%dT%H:%M:%S)",
             "description": "Agent testing bundle built from ${SOURCE_SHA}",
             "download_url": "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}",
             "signature_download_url": "",
-            "version": "${version}"
+            "version": "${VERSION}"
           }
           EOF
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add patches-bundle.json
-          git commit -m "Publish agent test bundle ${version}"
+          git commit -m "Publish agent test bundle ${VERSION}"
           git push origin HEAD:agents-test
