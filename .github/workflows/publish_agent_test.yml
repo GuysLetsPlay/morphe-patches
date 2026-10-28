@@ -12,6 +12,10 @@ permissions:
   contents: read
   packages: read
 
+concurrency:
+  group: agent-test-publisher
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
