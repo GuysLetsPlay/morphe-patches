@@ -20,7 +20,8 @@ val disableForcedUpdatesPatch = bytecodePatch(
 
 
     execute {
-        UpdateCheckFingerprint.method.apply {
+        val method = UpdateCheckFingerprint.methodOrNull ?: return@execute
+        method.apply {
             addInstructions(
                 0,
                 """
