@@ -6,6 +6,10 @@ import java.util.List;
 @SuppressWarnings("unused")
 public final class RemoveSponsoredItemsPatch {
 
+    public static boolean isPatchIncluded() {
+        return false; // Modified during patching.
+    }
+
     public static List<Object> filterSearchResults(List<Object> results) {
         if (results == null || results.isEmpty()) return results;
         List<Object> filtered = new ArrayList<>();

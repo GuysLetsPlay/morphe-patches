@@ -6,6 +6,10 @@ import java.util.List;
 @SuppressWarnings("unused")
 public final class RemoveAdsPatch {
 
+    public static boolean isPatchIncluded() {
+        return false; // Modified during patching.
+    }
+
     public static boolean shouldShowAd() {
         return false;
     }

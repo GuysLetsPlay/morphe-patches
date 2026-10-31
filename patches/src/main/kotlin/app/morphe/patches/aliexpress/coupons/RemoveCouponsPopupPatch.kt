@@ -20,7 +20,8 @@ val removeCouponsPopupPatch = bytecodePatch(
 
 
     execute {
-        CouponFatigueFingerprint.method.apply {
+        val method = CouponFatigueFingerprint.methodOrNull ?: return@execute
+        method.apply {
             addInstructions(
                 0,
                 """
