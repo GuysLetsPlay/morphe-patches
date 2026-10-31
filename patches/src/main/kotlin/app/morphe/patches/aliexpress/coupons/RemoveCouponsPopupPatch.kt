@@ -15,7 +15,7 @@ val removeCouponsPopupPatch = bytecodePatch(
     description = "Removes the coupon and promotion popup dialogs.",
     default = true
 ) {
-    dependency(app.morphe.patches.aliexpress.security.bypassSignatureCheckPatch)
+    dependsOn(app.morphe.patches.aliexpress.security.bypassSignatureCheckPatch)
     compatibleWith(COMPATIBILITY_ALIEXPRESS)
 
 

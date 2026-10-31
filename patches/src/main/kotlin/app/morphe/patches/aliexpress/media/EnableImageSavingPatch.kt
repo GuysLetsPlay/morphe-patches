@@ -15,7 +15,7 @@ val enableImageSavingPatch = bytecodePatch(
     description = "Enables saving product images directly to the device gallery.",
     default = false
 ) {
-    dependency(app.morphe.patches.aliexpress.security.bypassSignatureCheckPatch)
+    dependsOn(app.morphe.patches.aliexpress.security.bypassSignatureCheckPatch)
     compatibleWith(COMPATIBILITY_ALIEXPRESS)
 
 

@@ -15,7 +15,7 @@ val removeAffiliateTrackingPatch = bytecodePatch(
     description = "Removes affiliate tracking parameters from shared links.",
     default = true
 ) {
-    dependency(app.morphe.patches.aliexpress.security.bypassSignatureCheckPatch)
+    dependsOn(app.morphe.patches.aliexpress.security.bypassSignatureCheckPatch)
     compatibleWith(COMPATIBILITY_ALIEXPRESS)
 
 
