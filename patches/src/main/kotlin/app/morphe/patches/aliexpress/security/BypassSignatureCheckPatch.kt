@@ -18,7 +18,11 @@ val bypassSignatureCheckPatch = bytecodePatch(
     compatibleWith(COMPATIBILITY_ALIEXPRESS)
 
     execute {
-        TamperCheckFingerprint.method.apply {
+        // AliExpress can keep this message in a resource or a different method
+        // shape across releases. Skip the injection when the verifier method
+        // cannot be identified instead of failing the entire patch set.
+        val method = TamperCheckFingerprint.methodOrNull ?: return@execute
+        method.apply {
             addInstructions(
                 0,
                 """
