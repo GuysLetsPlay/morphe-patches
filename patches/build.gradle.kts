@@ -61,6 +61,11 @@ dependencies {
 }
 
 tasks {
+    processResources {
+        dependsOn(":extensions:aliexpress:syncExtension")
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    }
+
     test {
         useJUnitPlatform()
         dependsOn(":extensions:youtube:generateReleaseProto", ":extensions:youtube:compileReleaseJavaWithJavac")

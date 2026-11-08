@@ -4,6 +4,12 @@
 -keep class app.morphe.** {
   *;
 }
+-keep class app.hxreborn.extension.aliexpress.** {
+  *;
+}
+-keep class app.hxreborn.extension.shared.** {
+  *;
+}
 -keep class com.google.** {
   *;
 }

@@ -100,3 +100,43 @@ internal object OriginalPackageNameExtensionFingerprint : Fingerprint(
     returnType = "Ljava/lang/String;",
     parameters = listOf()
 )
+
+internal object GooglePlayServicesAvailabilityFingerprint : Fingerprint(
+    returnType = "I",
+    parameters = listOf("Landroid/content/Context;", "I"),
+    strings = listOf("This should never happen.", "MetadataValueReader"),
+)
+
+internal object GooglePlayServicesUtilAvailabilityFingerprint : Fingerprint(
+    returnType = "I",
+    parameters = listOf("Landroid/content/Context;", "I"),
+    strings = listOf("GooglePlayServicesUtil", " requires Google Play services, but their signature is invalid."),
+)
+
+internal object GooglePlayServicesPackageSignaturesFingerprint : Fingerprint(
+    returnType = "I",
+    strings = listOf(
+        " requires Google Play services, but their signature is invalid.",
+        " requires Google Play Store, but its signature is invalid.",
+    ),
+)
+
+internal object GetCredentialSuccessToStringFingerprint : Fingerprint(
+    name = "toString",
+    returnType = "Ljava/lang/String;",
+    filters = listOf(string("GetCredentialSuccess(credential=")),
+)
+
+internal object GetCredentialFailureToStringFingerprint : Fingerprint(
+    name = "toString",
+    returnType = "Ljava/lang/String;",
+    filters = listOf(string("GetCredentialFailure(type=")),
+)
+
+internal const val KOTLIN_RESULT_CLASS = "Lkotlin/Result;"
+
+internal object ObfuscatedResultToStringFingerprint : Fingerprint(
+    returnType = "Ljava/lang/String;",
+    filters = listOf(string("Success(")),
+    custom = { _, classDef -> classDef.type != KOTLIN_RESULT_CLASS },
+)
