@@ -32,7 +32,7 @@ private const val DARK_SPLASH = "#ff080b14"
 private val darkSplashResourcePatch = resourcePatch(
     name = "Dark startup screen",
     description = "Uses a dark background for the HVV startup screen.",
-    default = true,
+    default = false,
 ) {
     execute {
         val colors = get("res/values/colors.xml")
