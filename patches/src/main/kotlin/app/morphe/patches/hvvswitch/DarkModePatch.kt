@@ -36,11 +36,17 @@ private val darkSplashResourcePatch = resourcePatch(
 ) {
     execute {
         val colors = get("res/values/colors.xml")
-        val old = "<color name=\"ic_splashscreen_background\">#fff3f6fc</color>"
-        val new = "<color name=\"ic_splashscreen_background\">$DARK_SPLASH</color>"
+        val backgroundColor = Regex(
+            "(<color\\s+name=\"ic_splashscreen_background\"\\s*>)[^<]*(</color>)",
+        )
         val contents = colors.readText()
-        check(old in contents) { "Could not find the HVV splash background color" }
-        colors.writeText(contents.replace(old, new))
+        val matches = backgroundColor.findAll(contents).toList()
+        check(matches.size == 1) { "Expected one HVV splash background color, found ${matches.size}" }
+        colors.writeText(
+            backgroundColor.replace(contents) { match ->
+                "${match.groupValues[1]}$DARK_SPLASH${match.groupValues[2]}"
+            },
+        )
     }
 }
 
