@@ -17,7 +17,7 @@ import com.android.tools.smali.dexlib2.Opcode
 private val COMPATIBILITY_HVV_SWITCH = Compatibility(
     name = "HVV Switch",
     packageName = "de.hochbahn.hvvswitch",
-    apkFileType = ApkFileType.APKM,
+    apkFileType = ApkFileType.XAPK_REQUIRED,
     appIconColor = 0x0066A4,
     targets = listOf(AppTarget("2.5.0")),
 )
