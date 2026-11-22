@@ -43,11 +43,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 - <<'PY'
+          import re
           from pathlib import Path
           p = Path("patches/build.gradle.kts")
           s = p.read_text(encoding="utf-8")
+          name_pattern = re.compile(
+              r'name\s*=\s*(?:providers\.gradleProperty\("patchesName"\)\.getOrElse\("Morphe Patches"\)|"Morphe Patches")'
+          )
+          s, name_count = name_pattern.subn('name = "GuysLetsPlay Agent Test Patches"', s, count=1)
+          if name_count != 1:
+              raise SystemExit("Expected one supported Morphe bundle name field")
           replacements = {
-              'name = "Morphe Patches"': 'name = "GuysLetsPlay Agent Test Patches"',
               'description = "Patches for Morphe"': 'description = "Agent testing bundle"',
               'source = "git@github.com:MorpheApp/morphe-patches.git"': 'source = "https://github.com/GuysLetsPlay/morphe-patches"',
               'author = "MorpheApp"': 'author = "GuysLetsPlay"',
