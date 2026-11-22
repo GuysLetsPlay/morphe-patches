@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-11-21T13:50:34",
-  "description": "Agent testing bundle built from 613205901ededca6f2ddde64452c05f7f3307c55",
-  "download_url": "https://github.com/GuysLetsPlay/morphe-patches/releases/download/agent-test-44910516816/agent-test-44910516816.mpp",
+  "created_at": "2026-11-22T21:19:07",
+  "description": "Agent testing bundle built from ac73b9fde8fd109a9a43912f037f7364608b7a8c",
+  "download_url": "https://github.com/GuysLetsPlay/morphe-patches/releases/download/agent-test-45071095799/agent-test-45071095799.mpp",
   "signature_download_url": "",
-  "version": "2.3.0+agent.44910516816"
+  "version": "2.4.0-dev.8+agent.45071095799"
 }
