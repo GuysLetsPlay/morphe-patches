@@ -28,7 +28,7 @@ private const val DARK_SPLASH = "#ff080b14"
 private val darkSplashResourcePatch = resourcePatch(
     name = "Dark startup screen",
     description = "Uses a dark background for the HVV startup screen.",
-    default = true,
+    default = false,
 ) {
     execute {
         val colors = resourceFile("res/values/colors.xml")
@@ -48,7 +48,7 @@ private val darkSplashResourcePatch = resourcePatch(
 val darkModePatch = bytecodePatch(
     name = "Dark mode",
     description = "Forces the dark interface and switches every HVV map style to Mapbox Dark.",
-    default = true,
+    default = false,
 ) {
     compatibleWith(COMPATIBILITY_HVV_SWITCH)
     dependsOn(darkSplashResourcePatch)
